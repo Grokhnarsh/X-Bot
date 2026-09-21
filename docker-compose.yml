@@ -1,0 +1,40 @@
+services:
+  xbot:
+    build: .
+    image: x-bot:latest
+    container_name: x-bot
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      # Not-Aus: auf "false" stellen, wenn der Bot wirklich senden soll.
+      # Laesst sich auch in der Weboberflaeche umschalten.
+      XBOT_DRY_RUN: "true"
+      # PFLICHT - ohne diese Variable erzeugt der Container bei jedem Start
+      # ein neues Zufallspasswort und schreibt es ins Log.
+      # XBOT_WEB_PASSWORD: "hier-ein-langes-passwort"
+      #
+      # Wenn ein HTTPS-Proxy davorsteht, hier auf "true" setzen: dann wird
+      # das Sitzungs-Cookie nur noch verschluesselt uebertragen.
+      XBOT_WEB_HTTPS: "false"
+
+    ports:
+      # Nur lokal erreichbar. Fuer Zugriff aus dem Netz gehoert ein
+      # HTTPS-Proxy davor - die Oberflaeche kann im Namen deines Kontos
+      # auf X schreiben und verwaltet API-Schluessel.
+      - "127.0.0.1:8080:8080"
+
+    volumes:
+      # Konfiguration muss beschreibbar sein - sie wird aus der Oberflaeche
+      # heraus bearbeitet.
+      - ./config.yaml:/app/config.yaml
+      - ./content:/app/content
+      - ./.env:/app/.env
+      # Datenbank und Protokolle bleiben auf dem Host erhalten.
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+  # Ohne Weboberflaeche, nur der Taktgeber:
+  #   docker compose run --rm xbot run

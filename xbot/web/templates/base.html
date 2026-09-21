@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}X-Bot{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232a78d6'/><text x='16' y='23' font-family='sans-serif' font-size='18' font-weight='bold' fill='white' text-anchor='middle'>X</text></svg>">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-gauge"><circle cx="8" cy="9" r="6"/><path d="M8 9l3-3"/></g>
+    <g id="i-tag"><path d="M2 2h5l7 7-5 5-7-7z"/><circle cx="5" cy="5" r="1"/></g>
+    <g id="i-sliders"><path d="M2 4h12M2 11h12"/><circle cx="6" cy="4" r="2"/><circle cx="10" cy="11" r="2"/></g>
+    <g id="i-text"><path d="M2 3h12M2 7h9M2 11h11"/></g>
+    <g id="i-list"><path d="M6 3h8M6 8h8M6 13h8"/><circle cx="3" cy="3" r="1"/><circle cx="3" cy="8" r="1"/><circle cx="3" cy="13" r="1"/></g>
+    <g id="i-key"><circle cx="5" cy="6" r="3"/><path d="M7.5 8l5 5M11 11l1.5-1.5"/></g>
+    <g id="i-term"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 7l2 1.5L5 10M8.5 10.5h3"/></g>
+  </defs>
+</svg>
+
+{% macro icon(name) -%}
+<svg class="nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"
+     stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+     aria-hidden="true"><use href="#i-{{ name }}"/></svg>
+{%- endmacro %}
+
+{% set nav_items = [
+  ('dashboard', 'Übersicht',    'pages.dashboard', 'gauge'),
+  ('rules',     'Regeln',        'pages.rules',     'tag'),
+  ('settings',  'Einstellungen', 'pages.settings',  'sliders'),
+  ('content',   'Inhalte',       'pages.content',   'text'),
+  ('activity',  'Aktivität',    'pages.activity',  'list'),
+  ('setup',     'Einrichtung',   'pages.setup',     'key'),
+  ('logs',      'Protokoll',     'pages.logs',      'term'),
+] %}
+
+<div class="shell">
+  <nav class="sidebar">
+    <div class="brand"><span class="brand-mark">X</span> X-Bot</div>
+
+    {% for key, label, endpoint, ico in nav_items %}
+      <a class="nav-link {% if page == key %}active{% endif %}" href="{{ url_for(endpoint) }}">
+        {{ icon(ico) }} {{ label }}
+      </a>
+    {% endfor %}
+
+    <div class="nav-spacer"></div>
+
+    <button type="button" class="nav-link" id="theme-toggle"
+            style="background:none;border:none;cursor:pointer;font:inherit;text-align:left;width:100%">
+      <span class="nav-icon">◐</span> Darstellung
+    </button>
+    <form method="post" action="{{ url_for('pages.logout') }}" style="margin:0">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="nav-link"
+              style="background:none;border:none;cursor:pointer;font:inherit;text-align:left;width:100%">
+        <span class="nav-icon">⏻</span> Abmelden
+      </button>
+    </form>
+  </nav>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>{% block heading %}{% endblock %}</h1>
+        <div class="sub">{% block subheading %}{% endblock %}</div>
+      </div>
+      <div class="pill-row">
+        {% block pills %}
+          {% if nav_state.dry_run %}
+            <span class="pill accent"><span class="dot"></span>Probelauf</span>
+          {% else %}
+            <span class="pill critical"><span class="dot"></span>Echtbetrieb</span>
+          {% endif %}
+          {% if nav_state.running %}
+            <span class="pill good"><span class="dot"></span>Läuft</span>
+          {% else %}
+            <span class="pill muted"><span class="dot"></span>Gestoppt</span>
+          {% endif %}
+        {% endblock %}
+      </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash">
+          {% for category, message in messages %}
+            <div class="note {{ category }}">
+              <span class="mark">{% if category == 'ok' %}+{% elif category == 'error' %}x{% else %}!{% endif %}</span>
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

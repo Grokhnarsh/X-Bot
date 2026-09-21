@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Protokoll - X-Bot{% endblock %}
+{% block heading %}Protokoll{% endblock %}
+{% block subheading %}<span class="mono">{{ log_path or 'keine Protokolldatei konfiguriert' }}</span>{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2>Letzte Zeilen</h2>
+    <div class="btn-row">
+      <label class="check" style="margin-bottom:0">
+        <input type="checkbox" id="log-auto" checked>
+        <span>alle 5 Sekunden aktualisieren</span>
+      </label>
+      <button type="button" class="btn small" id="log-reload">Jetzt laden</button>
+    </div>
+  </div>
+
+  {% if log_path %}
+    <div class="logbox" id="logbox">{% for line in lines %}{{ line }}
+{% endfor %}{% if not lines %}Noch keine Einträge.{% endif %}</div>
+  {% else %}
+    <div class="empty">
+      In der Konfiguration ist unter <span class="mono">logging.file</span> keine Datei gesetzt.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

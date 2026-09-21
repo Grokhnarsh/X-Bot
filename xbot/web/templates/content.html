@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Inhalte - X-Bot{% endblock %}
+{% block heading %}Inhalte{% endblock %}
+{% block subheading %}Textvorlagen und Vorschau. Die Vorlagen sind der Rückfallweg, wenn keine KI erreichbar ist.{% endblock %}
+
+{% block content %}
+<div id="live-root">
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Vorschau</h2>
+      <span class="muted" style="font-size:12.5px">
+        Quelle: {% if config.content.provider == 'template' %}nur Vorlagen
+        {% elif config.credentials.anthropic_api_key %}Claude ({{ config.content.model }})
+        {% else %}Vorlagen - kein ANTHROPIC_API_KEY gesetzt{% endif %}
+      </span>
+    </div>
+    <p class="hint">Erzeugt Texte, ohne etwas zu senden oder zu speichern.</p>
+    <div class="btn-row">
+      <button type="button" class="btn primary" data-run="preview" data-label="Textvorschau">Drei Vorschläge erzeugen</button>
+    </div>
+    <div class="result" id="task-result" hidden></div>
+  </div>
+
+  {% if error %}
+    <div class="note error" style="margin-top:16px">
+      <span class="mark">x</span><span>{{ error }}</span>
+    </div>
+  {% endif %}
+
+  {% if library %}
+    <div class="grid cols-2" style="margin-top:16px;align-items:start">
+      <div class="tile">
+        <div class="label">Beitragsvorlagen</div>
+        <div class="value">{{ library.posts|length }}</div>
+        <div class="foot">je mehr, desto seltener wiederholt sich der Bot</div>
+      </div>
+      <div class="tile">
+        <div class="label">Antwortvorlagen</div>
+        <div class="value">{{ library.replies|length }}</div>
+        <div class="foot">nur ohne KI im Einsatz</div>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-head">
+      <h2>Vorlagendatei</h2>
+      <span class="mono muted">{{ templates_path }}</span>
+    </div>
+    <p class="hint">Platzhalter in geschweiften Klammern werden aus dem Abschnitt
+       <span class="mono">variables</span> gefüllt. Unbekannte Platzhalter werden
+       beim Speichern gemeldet, nicht erst beim nächsten Beitrag.</p>
+    <form method="post" action="{{ url_for('pages.content_save') }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <textarea name="raw" class="code" rows="24" spellcheck="false">{{ raw }}</textarea>
+      <div class="btn-row" style="margin-top:12px">
+        <button type="submit" class="btn primary">Vorlagen speichern</button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

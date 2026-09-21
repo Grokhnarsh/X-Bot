@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Einrichtung - X-Bot{% endblock %}
+{% block heading %}Einrichtung{% endblock %}
+{% block subheading %}Zugangsdaten und Selbsttest{% endblock %}
+
+{% block content %}
+<div id="live-root">
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Selbsttest</h2>
+      <div class="pill-row">
+        {% if status.credentials_ok %}
+          <span class="pill good"><span class="dot"></span>X verbunden</span>
+        {% else %}
+          <span class="pill critical"><span class="dot"></span>X fehlt</span>
+        {% endif %}
+        {% if status.ai %}
+          <span class="pill accent"><span class="dot"></span>KI aktiv</span>
+        {% else %}
+          <span class="pill muted"><span class="dot"></span>Vorlagen</span>
+        {% endif %}
+      </div>
+    </div>
+    <p class="hint">Prüft Konfiguration, Zugangsdaten und die Verbindung zu X.</p>
+    <div class="btn-row">
+      <button type="button" class="btn primary" data-run="doctor" data-label="Prüfung">Einrichtung prüfen</button>
+      <button type="button" class="btn" data-run="reload" data-label="Neuladen">Konfiguration neu laden</button>
+    </div>
+    <div class="result" id="task-result" hidden></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-head">
+      <h2>Zugangsdaten</h2>
+      <span class="mono muted">{{ env_path }}</span>
+    </div>
+    <p class="hint">Gespeicherte Werte werden nie wieder angezeigt. Ein leeres Feld lässt
+       den bisherigen Wert unverändert. Die Datei wird mit Rechten 0600 geschrieben.</p>
+
+    <div class="note warn" style="margin-bottom:16px">
+      <span class="mark">!</span>
+      <span><strong>Häufigster Fehler:</strong> Access Token und Secret müssen
+        <em>nach</em> dem Umstellen der App auf &bdquo;Read and write&ldquo; neu erzeugt
+        werden. Vorher erzeugte Tokens bleiben schreibgeschützt und liefern
+        bei jedem Schreibversuch einen 403.</span>
+    </div>
+
+    <form method="post" action="{{ url_for('pages.setup_credentials') }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+      {% for field in fields %}
+        <div class="field">
+          <label for="{{ field.key }}">
+            {{ field.label }}
+            {% if field.is_set %}
+              <span class="tag" style="margin-left:6px">gesetzt, {{ field.length }} Zeichen</span>
+            {% else %}
+              <span class="tag neutral" style="margin-left:6px">leer</span>
+            {% endif %}
+          </label>
+          <div class="desc">{{ field.hint }} &middot; <span class="mono">{{ field.key }}</span></div>
+          <input type="password" id="{{ field.key }}" name="{{ field.key }}" autocomplete="off"
+                 placeholder="{{ 'unverändert lassen' if field.is_set else 'noch nicht gesetzt' }}">
+          {% if field.is_set %}
+            <label class="check" style="margin-top:6px">
+              <input type="checkbox" name="clear_{{ field.key }}" value="1">
+              <span class="muted" style="font-size:12.5px">stattdessen löschen</span>
+            </label>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      <div class="btn-row">
+        <button type="submit" class="btn primary">Zugangsdaten speichern</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Woher kommen diese Werte?</h2>
+    <p class="hint" style="margin-bottom:10px">Im
+      <a href="https://developer.x.com/en/portal/dashboard" target="_blank" rel="noopener noreferrer">X Developer Portal</a>,
+      in dieser Reihenfolge:</p>
+    <ol style="margin:0;padding-left:20px;color:var(--ink-2);font-size:13.5px;line-height:1.9">
+      <li>Projekt und App anlegen.</li>
+      <li><strong>User authentication settings</strong> &rarr; App permissions auf <em>Read and write</em>,
+          Type of App auf <em>Web App, Automated App or Bot</em>.</li>
+      <li>Erst <strong>danach</strong> unter <em>Keys and tokens</em> alle Werte erzeugen.</li>
+      <li>Die Hashtag-Suche braucht mindestens die Zugriffsstufe <strong>Basic</strong>.
+          Auf der Free-Stufe kann der Bot nur eigene Beiträge veröffentlichen.</li>
+    </ol>
+  </div>
+
+</div>
+{% endblock %}

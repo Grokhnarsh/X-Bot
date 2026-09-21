@@ -1,0 +1,10 @@
+# --- X (Twitter) API ---
+tweepy>=4.16,<5
+
+# --- Konfiguration ---
+PyYAML>=6.0,<7
+python-dotenv>=1.0,<2
+
+# --- KI-Content (optional, aber empfohlen) ---
+# Ohne ANTHROPIC_API_KEY faellt der Bot automatisch auf Templates zurueck.
+anthropic>=1.0,<2

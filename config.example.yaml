@@ -1,0 +1,213 @@
+# =============================================================================
+#  X-Bot - Konfiguration
+#  Kopieren nach "config.yaml" und anpassen:  cp config.example.yaml config.yaml
+#  Zugangsdaten gehoeren NICHT hier rein, sondern in die .env-Datei.
+# =============================================================================
+
+bot:
+  # Sicherheitsnetz: true = es wird NICHTS wirklich gesendet, nur geloggt.
+  # Erst auf false stellen, wenn "xbot doctor" und ein Probelauf sauber sind.
+  dry_run: true
+
+  # Zeitzone fuer Aktivzeiten und Tageszaehler (IANA-Name).
+  timezone: "Europe/Berlin"
+
+  # Sprache der eigenen Posts (de/en/...). Steuert KI-Prompt und Templates.
+  language: "de"
+
+  # Wer ist der Bot? Wird direkt in den KI-Prompt uebernommen.
+  persona: >-
+    Ein sachlicher, hilfsbereiter Tech-Account, der praegnante Beobachtungen zu
+    Softwareentwicklung, KI und Automatisierung teilt. Kein Hype, keine
+    Clickbait-Sprache, keine Emoji-Ketten, keine Verkaufsfloskeln.
+
+  # Themenpool fuer eigene Posts. Pro Post wird ein Thema gezogen.
+  topics:
+    - "Praktische Automatisierung im Entwickleralltag"
+    - "Was beim Einsatz von LLMs in der Produktion wirklich zaehlt"
+    - "Kleine Python-Tricks mit grosser Wirkung"
+    - "Warum Observability vor Optimierung kommt"
+    - "Technische Schulden sichtbar machen"
+
+# -----------------------------------------------------------------------------
+# Eigene Beitraege erstellen und veroeffentlichen
+# -----------------------------------------------------------------------------
+posting:
+  enabled: true
+
+  # Abstand zwischen zwei Posts (Minuten) + Zufallsstreuung, damit der Bot
+  # kein exaktes Taktmuster erzeugt.
+  interval_minutes: 240
+  jitter_minutes: 60
+
+  # Nur in diesem Zeitfenster posten (Ortszeit, 0-23). start < end.
+  active_hours: [8, 22]
+
+  # Wochentage, an denen gepostet wird (0 = Montag ... 6 = Sonntag).
+  active_weekdays: [0, 1, 2, 3, 4, 5, 6]
+
+  # Harte Obergrenze pro Tag.
+  max_per_day: 5
+
+  # Hashtags an eigene Posts anhaengen.
+  include_hashtags: true
+  max_hashtags: 2
+  hashtag_pool:
+    - "#Python"
+    - "#DevOps"
+    - "#KI"
+    - "#Automatisierung"
+    - "#CleanCode"
+
+# -----------------------------------------------------------------------------
+# Auf fremde Beitraege reagieren (Hashtag-Monitoring)
+# -----------------------------------------------------------------------------
+engagement:
+  enabled: true
+
+  # Wie oft nach neuen Treffern gesucht wird.
+  interval_minutes: 30
+  jitter_minutes: 10
+
+  # Treffer pro Suchanfrage (10-100). Hoeher = mehr API-Verbrauch.
+  max_results_per_query: 25
+
+  # Nur Tweets aus den letzten N Minuten beruecksichtigen.
+  lookback_minutes: 180
+
+  # Hoechstens so viele Aktionen pro Durchlauf, damit kein Schwall entsteht.
+  max_actions_per_cycle: 5
+
+  # ---------------------------------------------------------------------------
+  # Limits. Diese Werte sind bewusst konservativ - sie schuetzen den Account
+  # vor der Spam-Erkennung von X. Nur mit Bedacht erhoehen.
+  # ---------------------------------------------------------------------------
+  limits:
+    like_per_hour: 12
+    like_per_day: 80
+    repost_per_hour: 3
+    repost_per_day: 15
+    reply_per_hour: 3
+    reply_per_day: 12
+    post_per_hour: 2
+    post_per_day: 5
+    # Mindestabstand zwischen zwei beliebigen Schreibaktionen (Sekunden).
+    min_seconds_between_actions: 30
+
+# -----------------------------------------------------------------------------
+# Hashtag-Regeln: worauf der Bot wie reagiert.
+# Die Regeln werden der Reihe nach geprueft, die erste passende gewinnt.
+# -----------------------------------------------------------------------------
+rules:
+  - name: "KI und Automatisierung"
+    hashtags: ["#KI", "#AI", "#MachineLearning", "#Automatisierung"]
+    match: any                      # any = ein Hashtag reicht, all = alle noetig
+    actions: ["like", "repost"]     # moeglich: like, repost, reply
+    languages: ["de", "en"]
+    min_likes: 3                    # erst ab dieser Beliebtheit reagieren
+    weight: 1.0
+
+  - name: "Python-Community"
+    hashtags: ["#Python", "#PyData"]
+    match: any
+    actions: ["like", "reply"]
+    languages: ["de", "en"]
+    min_likes: 1
+    weight: 1.0
+    # Optionaler Zusatzhinweis fuer die KI-Antwort dieser Regel:
+    reply_instruction: >-
+      Antworte mit einem konkreten, technisch nuetzlichen Hinweis.
+      Keine Werbung, keine Links, keine Floskeln wie "Grossartiger Beitrag".
+
+  - name: "Nur beobachten"
+    hashtags: ["#DevOps", "#CleanCode"]
+    match: any
+    actions: ["like"]
+    languages: ["de", "en"]
+    min_likes: 5
+    weight: 0.5
+
+# -----------------------------------------------------------------------------
+# Sicherheitsfilter. Greifen VOR jeder Aktion auf einen fremden Tweet.
+# -----------------------------------------------------------------------------
+filters:
+  # Nur diese Sprachen (ISO-639-1). Leere Liste = alle zulassen.
+  languages: ["de", "en"]
+
+  # Tweets mit diesen Begriffen werden immer uebersprungen (ohne Beachtung
+  # von Gross-/Kleinschreibung). Schuetzt vor Reputationsschaeden.
+  blocked_keywords:
+    - "nsfw"
+    - "gewinnspiel"
+    - "giveaway"
+    - "airdrop"
+    - "crypto pump"
+    - "follow back"
+    - "f4f"
+    - "dm me"
+    - "onlyfans"
+    - "casino"
+    - "betting"
+
+  # Diese Accounts werden nie beruehrt (ohne @).
+  blocked_users: []
+
+  # Wenn gesetzt, wird NUR auf diese Accounts reagiert (Whitelist-Modus).
+  allowed_users: []
+
+  skip_retweets: true       # reine Retweets ignorieren
+  skip_replies: true        # Antworten in fremden Threads ignorieren
+  skip_quotes: false        # Zitat-Tweets zulassen
+  skip_sensitive: true      # als sensibel markierte Inhalte ignorieren
+  skip_links: false         # Tweets mit Links ignorieren
+
+  # Spam-Heuristik: Tweets mit sehr vielen Hashtags/Mentions ueberspringen.
+  max_hashtags_in_tweet: 5
+  max_mentions_in_tweet: 3
+
+  # Mindestlaenge, um Ein-Wort-Tweets auszusortieren.
+  min_tweet_length: 30
+
+  # Autoren-Kriterien. 0 = keine Grenze.
+  min_author_followers: 30
+  max_author_followers: 0
+  require_verified: false
+
+# -----------------------------------------------------------------------------
+# Texterstellung
+# -----------------------------------------------------------------------------
+content:
+  # auto     = Claude nutzen wenn ANTHROPIC_API_KEY gesetzt ist, sonst Templates
+  # ai       = ausschliesslich Claude (bricht ohne Key ab)
+  # template = ausschliesslich Templates
+  provider: auto
+
+  model: "claude-opus-5"
+
+  # Denktiefe: low | medium | high | xhigh | max
+  # Fuer kurze Posts reicht low/medium - das spart Tokens.
+  effort: low
+
+  # Zeichenobergrenze fuer eigene Texte (X erlaubt 280).
+  max_chars: 260
+
+  templates_file: "content/templates.yaml"
+
+  # Schutz vor Wiederholungen: die letzten N Posts werden verglichen.
+  history_lookback: 60
+  # Ab diesem Aehnlichkeitswert (0-1) gilt ein Text als Dublette.
+  similarity_threshold: 0.75
+  # So oft wird bei einer Dublette neu generiert.
+  max_generation_attempts: 3
+
+# -----------------------------------------------------------------------------
+# Speicher und Logging
+# -----------------------------------------------------------------------------
+storage:
+  database: "data/xbot.db"
+
+logging:
+  level: "INFO"          # DEBUG | INFO | WARNING | ERROR
+  file: "logs/xbot.log"
+  max_bytes: 5242880     # 5 MB
+  backup_count: 3

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Regeln - X-Bot{% endblock %}
+{% block heading %}Hashtag-Regeln{% endblock %}
+{% block subheading %}Worauf der Bot reagiert und wie. Die erste passende Regel gewinnt.{% endblock %}
+
+{# Formularfelder einer Regel - einmal definiert, für Bearbeiten und Anlegen. #}
+{% macro rule_fields(rule=none) %}
+  <div class="field">
+    <label>Name</label>
+    <input type="text" name="str:rule.name" value="{{ rule.name if rule else '' }}" required>
+  </div>
+
+  <div class="field">
+    <label>Hashtags</label>
+    <div class="desc">Durch Komma oder Leerzeichen getrennt. Das Rautezeichen wird bei Bedarf ergänzt.</div>
+    <input type="text" name="tags:rule.hashtags"
+           value="{{ rule.hashtags|join(', ') if rule else '' }}"
+           placeholder="#KI, #Automatisierung" required>
+  </div>
+
+  <div class="inline" style="margin-bottom:14px">
+    <div class="field">
+      <label>Treffer</label>
+      <select name="str:rule.match">
+        <option value="any" {% if not rule or rule.match == 'any' %}selected{% endif %}>ein Hashtag genügt</option>
+        <option value="all" {% if rule and rule.match == 'all' %}selected{% endif %}>alle Hashtags nötig</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Mindest-Likes</label>
+      <input type="number" name="int:rule.min_likes" min="0" value="{{ rule.min_likes if rule else 0 }}">
+    </div>
+    <div class="field">
+      <label>Mindest-Reposts</label>
+      <input type="number" name="int:rule.min_reposts" min="0" value="{{ rule.min_reposts if rule else 0 }}">
+    </div>
+    <div class="field">
+      <label>Gewicht</label>
+      <div class="desc" style="margin:0">höher = zuerst bedient</div>
+      <input type="number" name="float:rule.weight" min="0" step="0.1" value="{{ rule.weight if rule else 1.0 }}">
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Aktionen</label>
+    <input type="hidden" name="strlist:rule.actions" value="">
+    <div class="check-row">
+      {% for value, label, note in [
+          ('like',   'Liken',    'unaufdringlich, guter Einstieg'),
+          ('repost', 'Teilen',   'macht den Beitrag sichtbar'),
+          ('reply',  'Antworten','nur mit aktiver KI sinnvoll')] %}
+        <label class="check">
+          <input type="checkbox" name="strlist:rule.actions" value="{{ value }}"
+                 {% if rule and value in rule.actions %}checked{% endif %}>
+          <span>{{ label }}<br><span class="muted" style="font-size:12px">{{ note }}</span></span>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Sprachen</label>
+    <div class="desc">Leer = die globale Einstellung gilt.</div>
+    <input type="text" name="csv:rule.languages" value="{{ rule.languages|join(', ') if rule else '' }}" placeholder="de, en">
+  </div>
+
+  <div class="field">
+    <label>Zusatzhinweis für Antworten</label>
+    <div class="desc">Geht direkt in den KI-Prompt dieser Regel. Nur bei der Aktion &bdquo;Antworten&ldquo; wirksam.</div>
+    <textarea name="text:rule.reply_instruction" rows="2">{{ rule.reply_instruction if rule else '' }}</textarea>
+  </div>
+{% endmacro %}
+
+{% block content %}
+
+{% if not config.engagement.enabled %}
+  <div class="note warn" style="margin-bottom:16px">
+    <span class="mark">!</span>
+    <span>Das Hashtag-Monitoring ist abgeschaltet - die Regeln unten laufen nicht.
+      <a href="{{ url_for('pages.settings') }}">In den Einstellungen einschalten</a>.</span>
+  </div>
+{% endif %}
+
+{% for index, rule in rules %}
+  <div class="rule-card">
+    <div class="rule-head">
+      <h3>{{ rule.name }}</h3>
+      <div class="pill-row">
+        {% for action in ['like', 'repost', 'reply'] %}
+          {% if action in rule.actions %}<span class="pill accent">{{ action_labels[action] }}</span>{% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="rule-tags">
+      {% for tag in rule.hashtags %}<span class="tag">{{ tag }}</span>{% endfor %}
+    </div>
+
+    <div class="rule-meta">
+      {{ 'ein Hashtag genügt' if rule.match == 'any' else 'alle Hashtags nötig' }}
+      &middot; ab {{ rule.min_likes }} Like{{ '' if rule.min_likes == 1 else 's' }}
+      {%- if rule.min_reposts %} und {{ rule.min_reposts }} Repost{{ '' if rule.min_reposts == 1 else 's' }}{% endif %}
+      &middot; Gewicht {{ rule.weight }}
+      {%- if rule.languages %} &middot; {{ rule.languages|join(', ') }}{% endif %}
+    </div>
+
+    <details class="editor">
+      <summary>Bearbeiten</summary>
+      <div>
+        <form method="post" action="{{ url_for('pages.rules_save') }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="index" value="{{ index }}">
+          {{ rule_fields(rule) }}
+          <div class="btn-row">
+            <button type="submit" class="btn primary">Speichern</button>
+          </div>
+        </form>
+
+        <form method="post" action="{{ url_for('pages.rules_delete') }}" style="margin-top:10px"
+              onsubmit="return confirm('Regel &quot;{{ rule.name }}&quot; wirklich löschen?')">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="index" value="{{ index }}">
+          <button type="submit" class="btn danger small">Regel löschen</button>
+        </form>
+      </div>
+    </details>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="empty">Noch keine Regel angelegt. Ohne Regel reagiert der Bot auf nichts.</div>
+  </div>
+{% endfor %}
+
+<div class="card" style="margin-top:16px">
+  <details class="editor" {% if not rules %}open{% endif %}>
+    <summary style="font-size:14px">Neue Regel anlegen</summary>
+    <div>
+      <form method="post" action="{{ url_for('pages.rules_save') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="hidden" name="index" value="">
+        {{ rule_fields(none) }}
+        <div class="btn-row">
+          <button type="submit" class="btn primary">Regel anlegen</button>
+        </div>
+      </form>
+    </div>
+  </details>
+</div>
+
+{% endblock %}

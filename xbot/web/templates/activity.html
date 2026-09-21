@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Aktivität - X-Bot{% endblock %}
+{% block heading %}Aktivität{% endblock %}
+{% block subheading %}{{ total }} Einträge insgesamt{% endblock %}
+
+{% block content %}
+
+<div class="card">
+  <form method="get" class="inline" style="margin-bottom:16px">
+    <div class="field">
+      <label>Aktion</label>
+      <select name="action" onchange="this.form.submit()">
+        <option value="">alle</option>
+        {% for action in actions %}
+          <option value="{{ action }}" {% if filter_action == action %}selected{% endif %}>{{ action_labels[action] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <label class="check" style="margin-bottom:10px">
+      <input type="checkbox" name="dry" value="1" {% if include_dry %}checked{% endif %} onchange="this.form.submit()">
+      <span>Probeläufe anzeigen</span>
+    </label>
+    <noscript><button type="submit" class="btn small">Anwenden</button></noscript>
+  </form>
+
+  {% if entries %}
+    <table>
+      <thead>
+        <tr><th>Wann</th><th>Aktion</th><th>Ziel</th><th>Regel</th><th>Text</th></tr>
+      </thead>
+      <tbody>
+        {% for row in entries %}
+          <tr>
+            <td class="num">{{ row.when }}</td>
+            <td>
+              <span class="tag">{{ action_labels.get(row.action, row.action) }}</span>
+              {% if row.dry_run %}<span class="tag neutral">Probe</span>{% endif %}
+            </td>
+            <td class="text">
+              {% if row.target_author %}
+                <a href="https://x.com/{{ row.target_author }}/status/{{ row.target_id }}"
+                   target="_blank" rel="noopener noreferrer">@{{ row.target_author }}</a>
+              {% elif row.target_id %}<span class="mono">{{ row.target_id }}</span>
+              {% else %}-{% endif %}
+            </td>
+            <td class="text">{{ row.rule_name or '-' }}</td>
+            <td class="text">{{ (row.text or '')|replace('\n', ' ')|truncate(90) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if pages > 1 %}
+      <div class="pager">
+        {% set query = '&action=' ~ filter_action ~ ('&dry=1' if include_dry else '&dry=0') %}
+        {% if page_number > 1 %}
+          <a class="btn small" href="?page={{ page_number - 1 }}{{ query }}">Zurück</a>
+        {% endif %}
+        <span>Seite {{ page_number }} von {{ pages }}</span>
+        {% if page_number < pages %}
+          <a class="btn small" href="?page={{ page_number + 1 }}{{ query }}">Weiter</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="empty">Keine Einträge für diese Auswahl.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,27 @@
+# Secrets - NIEMALS committen
+.env
+*.pem
+*.key
+
+# Laufzeitdaten
+data/
+*.db
+*.db-journal
+*.sqlite3
+logs/
+*.log
+
+# Lokale Konfiguration
+config.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/

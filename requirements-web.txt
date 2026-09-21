@@ -1,0 +1,10 @@
+# Weboberflaeche - optionaler Zusatz zum Bot.
+#   pip install -r requirements-web.txt
+#   xbot web
+-r requirements.txt
+
+Flask>=3.0,<4
+# Round-Trip-YAML: erhaelt die Kommentare der config.yaml beim Speichern.
+ruamel.yaml>=0.18,<0.19
+# Schlanker WSGI-Server, damit nicht der Entwicklungsserver laeuft.
+waitress>=3.0,<4

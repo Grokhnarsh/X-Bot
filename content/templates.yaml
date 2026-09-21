@@ -1,0 +1,92 @@
+# =============================================================================
+#  Textbausteine für den X-Bot
+#
+#  Diese Datei ist der Rückfallweg, wenn keine KI konfiguriert ist
+#  (content.provider: template, oder kein ANTHROPIC_API_KEY gesetzt).
+#
+#  Platzhalter in geschweiften Klammern werden aus "variables" zufällig
+#  gefüllt. Unbekannte Platzhalter führen zu einer klaren Fehlermeldung,
+#  nicht zu einem kaputten Beitrag.
+#
+#  Passe die Texte an deine Stimme an - je konkreter, desto besser.
+# =============================================================================
+
+variables:
+  werkzeug:
+    - "ruff"
+    - "pytest"
+    - "mypy"
+    - "pre-commit"
+    - "Docker"
+    - "GitHub Actions"
+
+  # Akkusativ - passt zu "über {zeitraum} hinweg"
+  zeitraum:
+    - "eine Woche"
+    - "einen Nachmittag"
+    - "zwei Sprints"
+    - "einen Monat"
+
+  # Dativ - passt zu "nach {zeitraum_dativ}"
+  zeitraum_dativ:
+    - "einer Woche"
+    - "einem Nachmittag"
+    - "zwei Sprints"
+    - "einem Monat"
+
+  aufwand:
+    - "zehn Minuten"
+    - "eine halbe Stunde"
+    - "einen Vormittag"
+
+  praxis:
+    - "kleine Pull Requests"
+    - "aussagekräftige Fehlermeldungen"
+    - "Tests für den Fehlerfall"
+    - "Logs mit Kontext"
+    - "ein ehrliches README"
+
+  metrik:
+    - "Fehlerrate"
+    - "Build-Dauer"
+    - "Zeit bis zur ersten Diagnose"
+    - "Zahl der manuellen Schritte"
+
+# -----------------------------------------------------------------------------
+# Eigene Beiträge
+# -----------------------------------------------------------------------------
+posts:
+  - "{werkzeug} einzurichten kostet {aufwand}. Es nicht zu tun kostet jede Woche mehr."
+  - "Die unterschätzteste Optimierung: {praxis}. Kostet nichts, wirkt sofort."
+  - "Bevor du etwas optimierst, miss die {metrik}. Ohne Zahl ist jede Verbesserung ein Gefühl."
+  - "Automatisierung lohnt sich nicht ab einer bestimmten Häufigkeit, sondern ab einer bestimmten Fehleranfälligkeit."
+  - "Wer {praxis} ernst nimmt, braucht seltener lange Meetings über Code."
+  - "Ein Skript, das nur du ausführen kannst, ist keine Automatisierung. Es ist eine Abhängigkeit."
+  - "Nach {zeitraum_dativ} mit {werkzeug}: der größte Gewinn war nicht die Geschwindigkeit, sondern dass Diskussionen über Stil aufgehört haben."
+  - "Technische Schulden sind erst dann ein Problem, wenn niemand mehr sagen kann, wie hoch sie sind."
+  - "Guter Code erklärt das Was. Gute Commits erklären das Warum. Beides zusammen spart dem nächsten Menschen {aufwand}."
+  - "Die meisten Produktionsfehler sind keine Überraschung. Sie sind ein Randfall, den jemand bewusst verschoben hat."
+  - "Wenn ein Prozess dreimal manuell lief, ist er ein Kandidat für ein Skript. Wenn er dreimal schiefging, ist er ein Auftrag."
+  - "Observability vor Optimierung: erst sehen, wo die Zeit hingeht, dann etwas daran ändern."
+  - "Ein Test, der nur bestätigt, dass der Code macht was er macht, testet nichts. Teste die Annahme, nicht die Implementierung."
+  - "Niemand vermisst {praxis} - bis der erste Vorfall um drei Uhr nachts kommt."
+  - "Modelle in Produktion scheitern selten am Modell. Sie scheitern an Daten, die sich leise verändert haben."
+  - "Ein LLM ersetzt kein Verständnis des Problems. Es beschleunigt nur den Weg dorthin - oder den Weg in die falsche Richtung."
+  - "Die ehrlichste Kennzahl eines Projekts: wie lange braucht ein neuer Mensch bis zum ersten grünen Testlauf?"
+  - "Wiederholbarkeit schlägt Geschwindigkeit. Ein Deployment, das immer gleich läuft, ist mehr wert als eines, das manchmal schneller ist."
+  - "Lösche toten Code. Er kostet keine Laufzeit, aber jede Menge Aufmerksamkeit."
+  - "Konfiguration gehört in Dateien, Geheimnisse in die Umgebung und beides nicht in den Commit."
+
+# -----------------------------------------------------------------------------
+# Antworten auf fremde Beiträge
+#
+# Diese Texte sind bewusst allgemein gehalten. Antworten ohne KI können den
+# fremden Beitrag nicht wirklich lesen - setze "reply" deshalb nur dann als
+# Aktion ein, wenn die KI aktiv ist, oder halte die Liste sehr neutral.
+# -----------------------------------------------------------------------------
+replies:
+  - "Guter Punkt. Was hier oft hilft: {praxis}."
+  - "Sehe ich ähnlich - bei uns war der größte Hebel: {praxis}."
+  - "Spannend. Hast du dabei auch die {metrik} im Blick behalten?"
+  - "Dazu passt: {werkzeug} nimmt einem genau diesen Schritt ab."
+  - "Interessanter Ansatz. Wie verhält sich das über {zeitraum} hinweg?"
