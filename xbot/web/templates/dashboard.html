@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Übersicht - X-Bot{% endblock %}
+{% block heading %}Übersicht{% endblock %}
+{% block subheading %}
+  {{ config.rules|length }} Regeln, {{ config.monitored_hashtags|length }} Hashtags
+  &middot; Zeitzone {{ config.bot.timezone }}
+{% endblock %}
+
+{% block content %}
+<div id="live-root">
+
+  {% if status.error %}
+    <div class="note error" style="margin-bottom:16px">
+      <span class="mark">x</span><span>{{ status.error }}</span>
+    </div>
+  {% endif %}
+
+  {% if not status.credentials_ok %}
+    <div class="note warn" style="margin-bottom:16px">
+      <span class="mark">!</span>
+      <span>Es fehlen X-Zugangsdaten. Der Bot kann nichts senden.
+        <a href="{{ url_for('pages.setup') }}">Jetzt eintragen</a>.</span>
+    </div>
+  {% endif %}
+
+  {# ------------------------------------------------------------ Steuerung #}
+  <div class="card">
+    <div class="card-head">
+      <h2>Steuerung</h2>
+      <span class="muted" style="font-size:12.5px">
+        {% if config.bot.dry_run %}Im Probelauf wird protokolliert, aber nichts gesendet.
+        {% else %}Der Bot sendet wirklich auf X.{% endif %}
+      </span>
+    </div>
+
+    <div class="btn-row">
+      {% if status.running %}
+        <button type="button" class="btn" data-command="stop">Bot anhalten</button>
+      {% else %}
+        <button type="button" class="btn primary" data-command="start">Bot starten</button>
+      {% endif %}
+
+      {% if config.bot.dry_run %}
+        <button type="button" class="btn danger" data-command="mode" data-dry-run="0">Echtbetrieb einschalten</button>
+      {% else %}
+        <button type="button" class="btn" data-command="mode" data-dry-run="1">Zurück in den Probelauf</button>
+      {% endif %}
+
+      <span style="flex:1"></span>
+
+      <button type="button" class="btn" data-run="post" data-label="Beitrag"
+              {% if not config.bot.dry_run %}data-confirm="Jetzt wirklich einen Beitrag auf X veröffentlichen?"{% endif %}>
+        Jetzt posten
+      </button>
+      <button type="button" class="btn" data-run="engage" data-label="Reaktionsdurchlauf"
+              {% if not config.bot.dry_run %}data-confirm="Jetzt wirklich auf Hashtags reagieren (liken, teilen, antworten)?"{% endif %}>
+        Jetzt reagieren
+      </button>
+      <button type="button" class="btn" data-run="preview" data-label="Textvorschau">Vorschau</button>
+      <button type="button" class="btn" data-run="doctor" data-label="Prüfung">Prüfen</button>
+    </div>
+
+    <div class="result" id="task-result" hidden></div>
+  </div>
+
+  {# -------------------------------------------------------- Zahlen heute #}
+  <div class="grid cols-2" style="margin-top:16px;align-items:start">
+    <div class="card">
+      <h2>Heute</h2>
+      <p class="hint">Seit Mitternacht {{ config.bot.timezone }}{% if config.bot.dry_run %}, Probelauf mitgezählt{% endif %}.</p>
+      <div class="hero-label">Aktionen insgesamt</div>
+      <div class="hero" id="stat-total">{{ snapshot.today_total }}</div>
+
+      <div class="grid cols-4" style="margin-top:18px;gap:10px">
+        {% for action in actions %}
+          <div class="tile">
+            <div class="label">{{ action_labels[action] }}</div>
+            <div class="value" id="stat-{{ action }}">{{ snapshot.today[action] }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Auslastung der Tageslimits</h2>
+      <p class="hint">Der Bot handelt erst wieder, wenn ein Limit zurückgesetzt ist.</p>
+      {% for action in actions %}
+        {% set usage = snapshot.quota[action] %}
+        {% set share = usage.share_day %}
+        <div class="meter-row">
+          <span class="meter-name">{{ action_labels[action] }}</span>
+          <span class="meter">
+            <span class="meter-fill{% if share >= 0.9 %} critical{% elif share >= 0.7 %} warn{% endif %}"
+                  id="meter-{{ action }}" style="width: {{ (share * 100)|round(1) }}%"></span>
+          </span>
+          <span class="meter-value" id="meterval-{{ action }}">{{ usage.used_day }} / {{ usage.limit_day }}</span>
+        </div>
+      {% endfor %}
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--grid)">
+        <h2 style="margin-bottom:8px">Zeitplan</h2>
+        {% for job in status.jobs %}
+          <div class="meter-row" style="grid-template-columns:1fr auto">
+            <span class="meter-name">
+              {{ job.name }}
+              {% if not job.enabled %}<span class="tag neutral">aus</span>{% endif %}
+            </span>
+            <span class="meter-value" id="job-next-{{ loop.index0 }}">
+              {% if not job.enabled %}-
+              {% elif not status.running %}angehalten
+              {% else %}{{ humanize_delta(job.next_run) }}{% endif %}
+            </span>
+          </div>
+        {% else %}
+          <div class="empty">Keine Aufgaben konfiguriert.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# ----------------------------------------------------------- Verlauf #}
+  <div class="card" style="margin-top:16px">
+    <div class="card-head">
+      <h2>Aktionen pro Tag, letzte 14 Tage</h2>
+      <span class="muted" style="font-size:12.5px">Höchstwert: {{ peak }}</span>
+    </div>
+    {% if peak > 0 %}
+      <div class="chart">
+        {% for day in history %}
+          <div class="chart-col">
+            <span class="tip">{{ day.date }}: {{ day.total }}</span>
+            <div class="chart-bar" style="height: {{ ((day.total / peak) * 100)|round(1) if peak else 0 }}%"></div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="chart-axis">
+        {% for day in history %}
+          <span>{{ day.date if loop.index0 % 2 == 0 else '' }}</span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">Noch keine Aktionen aufgezeichnet.</div>
+    {% endif %}
+  </div>
+
+  {# --------------------------------------------------------- Aktivität #}
+  <div class="card" style="margin-top:16px">
+    <div class="card-head">
+      <h2>Zuletzt</h2>
+      <a class="tab" href="{{ url_for('pages.activity') }}">Alles ansehen</a>
+    </div>
+    {% if snapshot.recent %}
+      <table>
+        <thead>
+          <tr><th>Wann</th><th>Aktion</th><th>Ziel</th><th>Regel</th><th>Text</th></tr>
+        </thead>
+        <tbody>
+          {% for row in snapshot.recent %}
+            <tr>
+              <td class="num">{{ format_local(row.created_at) }}</td>
+              <td>
+                <span class="tag">{{ action_labels.get(row.action, row.action) }}</span>
+                {% if row.dry_run %}<span class="tag neutral">Probe</span>{% endif %}
+              </td>
+              <td class="text">
+                {% if row.target_author %}@{{ row.target_author }}
+                {% elif row.target_id %}<span class="mono">{{ row.target_id }}</span>
+                {% else %}-{% endif %}
+              </td>
+              <td class="text">{{ row.rule_name or '-' }}</td>
+              <td class="text">{{ (row.text or '')|replace('\n', ' ')|truncate(70) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">Noch nichts passiert. Mit &bdquo;Jetzt reagieren&ldquo; einen Probelauf starten.</div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

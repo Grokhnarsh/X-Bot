@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 import sys
 from dataclasses import replace
@@ -212,6 +213,45 @@ def cmd_stats(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_web(args: argparse.Namespace) -> int:
+    """Startet die Weboberflaeche.
+
+    Anders als die uebrigen Befehle laeuft dieser auch bei einer kaputten
+    config.yaml an - die Oberflaeche zeigt dann eine Seite zum Reparieren,
+    was ohne Terminal sonst nicht moeglich waere.
+    """
+    try:
+        from .web import create_app
+        from .web.server import serve
+    except ImportError as exc:
+        print(
+            "Die Weboberflaeche braucht zusaetzliche Pakete.\n"
+            "  pip install -r requirements-web.txt\n"
+            f"(fehlt: {exc.name})",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    if args.live and args.dry_run:
+        print("--live und --dry-run schliessen sich gegenseitig aus.", file=sys.stderr)
+        return EXIT_CONFIG
+    # Der Modus wird ueber die Umgebung gesetzt, damit der Schalter in der
+    # Oberflaeche spaeter dieselbe Stelle veraendert.
+    if args.live:
+        os.environ["XBOT_DRY_RUN"] = "false"
+    elif args.dry_run:
+        os.environ["XBOT_DRY_RUN"] = "true"
+
+    app = create_app(args.config, password=args.password)
+    try:
+        serve(app, host=args.host, port=args.port)
+    except KeyboardInterrupt:
+        print("\nBeendet.")
+    finally:
+        app.extensions["xbot_runner"].shutdown()
+    return EXIT_OK
+
+
 # ---------------------------------------------------------------------------
 # Gemeinsames
 # ---------------------------------------------------------------------------
@@ -250,6 +290,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  xbot preview -n 5            fuenf Textvorschlaege ansehen\n"
             "  xbot engage                  einmal auf Hashtags reagieren (Probelauf)\n"
             "  xbot run --live              Dauerbetrieb, sendet wirklich\n"
+            "  xbot web                     Weboberflaeche auf http://127.0.0.1:8080\n"
         ),
     )
     parser.add_argument("--version", action="version", version=f"X-Bot {__version__}")
@@ -288,6 +329,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-cycles", type=int, default=None, help="nach so vielen Laeufen beenden (fuer Tests)")
     p.add_argument("--no-initial-run", action="store_true", help="nicht sofort beim Start loslegen")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("web", parents=[common], help="Weboberflaeche starten")
+    p.add_argument("--host", default="127.0.0.1",
+                   help="Adresse (Standard: 127.0.0.1, nur lokal erreichbar)")
+    p.add_argument("--port", type=int, default=8080, help="Port (Standard: 8080)")
+    p.add_argument("--password", default=None,
+                   help="Passwort der Oberflaeche (sonst XBOT_WEB_PASSWORD, sonst zufaellig)")
+    p.set_defaults(func=cmd_web)
 
     p = sub.add_parser("stats", parents=[common], help="Auswertung der bisherigen Aktionen")
     p.add_argument("--days", type=int, default=7, help="Zeitraum in Tagen (Standard: 7)")

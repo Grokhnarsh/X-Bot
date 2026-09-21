@@ -284,7 +284,9 @@ class Store:
         return list(
             self.conn.execute(
                 "SELECT action, target_id, target_author, rule_name, text, dry_run, created_at "
-                "FROM actions ORDER BY id DESC LIMIT ?",
+                # Nach Zeitstempel, nicht nach Einfuegereihenfolge: nachtraeglich
+                # eingespielte Eintraege sollen an der richtigen Stelle stehen.
+                "FROM actions ORDER BY created_at DESC, id DESC LIMIT ?",
                 (max(1, limit),),
             ).fetchall()
         )
@@ -296,3 +298,44 @@ class Store:
             deleted = conn.execute("DELETE FROM seen_tweets WHERE first_seen < ?", (cutoff,)).rowcount
             deleted += conn.execute("DELETE FROM actions WHERE created_at < ?", (cutoff,)).rowcount
         return int(deleted)
+
+    def actions_since(self, since: datetime, *, include_dry_run: bool = False) -> list[tuple[str, datetime]]:
+        """Aktionsart und Zeitpunkt aller Eintraege ab ``since``.
+
+        Eine einzige Abfrage als Grundlage fuer Verlaufsdarstellungen - das
+        Einsortieren in Tagesscheiben passiert danach in Python, weil SQLite
+        keine Zeitzonen kennt.
+        """
+        sql = "SELECT action, created_at FROM actions WHERE created_at >= ?"
+        params: list[object] = [to_iso(since)]
+        if not include_dry_run:
+            sql += " AND dry_run = 0"
+        sql += " ORDER BY created_at ASC"
+        return [(str(row["action"]), from_iso(str(row["created_at"]))) for row in self.conn.execute(sql, params)]
+
+    def list_actions(
+        self,
+        *,
+        action: str | None = None,
+        include_dry_run: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[sqlite3.Row], int]:
+        """Seitenweises Protokoll samt Gesamtzahl - fuer die Weboberflaeche."""
+        where = "WHERE 1 = 1"
+        params: list[object] = []
+        if action:
+            where += " AND action = ?"
+            params.append(action)
+        if not include_dry_run:
+            where += " AND dry_run = 0"
+
+        total_row = self.conn.execute(f"SELECT COUNT(*) AS n FROM actions {where}", params).fetchone()
+        total = int(total_row["n"]) if total_row else 0
+
+        rows = self.conn.execute(
+            f"SELECT action, target_id, target_author, rule_name, text, dry_run, created_at "
+            f"FROM actions {where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+            [*params, max(1, limit), max(0, offset)],
+        ).fetchall()
+        return list(rows), total

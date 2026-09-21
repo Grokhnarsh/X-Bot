@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Anmelden - X-Bot</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="card login-card">
+    <div class="brand"><span class="brand-mark">X</span> X-Bot</div>
+
+    {% if error %}
+      <div class="note error" style="margin-bottom:14px">
+        <span class="mark">x</span><span>{{ error }}</span>
+      </div>
+    {% endif %}
+
+    {% if generated %}
+      <div class="note warn" style="margin-bottom:14px">
+        <span class="mark">!</span>
+        <span>Es war kein Passwort gesetzt. Beim Start wurde eines erzeugt und
+              auf der Konsole ausgegeben. Dauerhaft: <span class="mono">XBOT_WEB_PASSWORD</span>
+              in der <span class="mono">.env</span> setzen.</span>
+      </div>
+    {% endif %}
+
+    <form method="post">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="field">
+        <label for="password">Passwort</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" autofocus required>
+      </div>
+      <button type="submit" class="btn primary" style="width:100%">Anmelden</button>
+    </form>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

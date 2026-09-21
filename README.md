@@ -7,6 +7,10 @@ reagiert.
 Geschrieben in Python gegen die offizielle **X API v2** (via `tweepy`).
 Texte entstehen wahlweise mit **Claude** oder aus lokalen Vorlagen.
 
+Bedienen lässt er sich vollständig **im Browser** — Zugangsdaten, Regeln,
+Limits, Filter, Texte, Start und Stopp, Echtbetrieb-Schalter und Protokoll.
+Ein Terminal brauchst du nur für den einen Befehl, der den Server startet.
+
 ```
 ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
 │  Taktgeber   │─────▶│  Beiträge    │─────▶│              │
@@ -30,16 +34,17 @@ Texte entstehen wahlweise mit **Claude** oder aus lokalen Vorlagen.
 1. [Was der Bot kann](#was-der-bot-kann)
 2. [Voraussetzungen](#voraussetzungen)
 3. [Installation](#installation)
-4. [Zugangsdaten bei X einrichten](#zugangsdaten-bei-x-einrichten)
-5. [Konfiguration](#konfiguration)
-6. [Befehle](#befehle)
-7. [Vom Probelauf in den Echtbetrieb](#vom-probelauf-in-den-echtbetrieb)
-8. [Dauerbetrieb](#dauerbetrieb)
-9. [Sicherheitsnetze](#sicherheitsnetze)
-10. [Regeln von X einhalten](#regeln-von-x-einhalten)
-11. [Aufbau des Projekts](#aufbau-des-projekts)
-12. [Entwicklung und Tests](#entwicklung-und-tests)
-13. [Problemlösung](#problemlösung)
+4. [Weboberfläche](#weboberfläche)
+5. [Zugangsdaten bei X einrichten](#zugangsdaten-bei-x-einrichten)
+6. [Konfiguration](#konfiguration)
+7. [Befehle](#befehle)
+8. [Vom Probelauf in den Echtbetrieb](#vom-probelauf-in-den-echtbetrieb)
+9. [Dauerbetrieb](#dauerbetrieb)
+10. [Sicherheitsnetze](#sicherheitsnetze)
+11. [Regeln von X einhalten](#regeln-von-x-einhalten)
+12. [Aufbau des Projekts](#aufbau-des-projekts)
+13. [Entwicklung und Tests](#entwicklung-und-tests)
+14. [Problemlösung](#problemlösung)
 
 ---
 
@@ -56,6 +61,7 @@ Texte entstehen wahlweise mit **Claude** oder aus lokalen Vorlagen.
 | **Limits** | Stunden- und Tageslimits pro Aktion plus Mindestabstand zwischen zwei Aktionen. |
 | **Probelauf** | Standardmäßig wird nichts gesendet — alles nur protokolliert. |
 | **Gedächtnis** | SQLite merkt sich jeden bewerteten Tweet: nie zweimal dieselbe Aktion. |
+| **Weboberfläche** | Alles davon im Browser einstellbar und steuerbar, mit Kennzahlen, Verlauf und Live-Protokoll. |
 
 ---
 
@@ -92,14 +98,18 @@ cd X-Bot
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
+# Nur der Bot (Kommandozeile):
 pip install -r requirements.txt
+
+# Mit Weboberfläche (empfohlen):
+pip install -r requirements-web.txt
 ```
 
 Optional als Kommando installieren, dann heißt der Aufruf überall `xbot`
 statt `python -m xbot`:
 
 ```bash
-pip install -e .
+pip install -e ".[web]"
 ```
 
 Konfiguration anlegen:
@@ -112,9 +122,93 @@ Das erzeugt `config.yaml` und `.env` aus den mitgelieferten Vorlagen.
 
 ---
 
+## Weboberfläche
+
+Der bequemste Weg, den Bot zu bedienen. Sie deckt alles ab, was die
+Kommandozeile kann, und ein paar Dinge mehr.
+
+```bash
+pip install -r requirements-web.txt
+
+# Passwort festlegen - ohne Vorgabe wird eines erzeugt und angezeigt
+echo 'XBOT_WEB_PASSWORD=ein-langes-passwort' >> .env
+
+xbot web
+# http://127.0.0.1:8080
+```
+
+### Was es dort gibt
+
+| Seite | Wofür |
+|---|---|
+| **Übersicht** | Start/Stopp, Umschalter Probelauf ↔ Echtbetrieb, Sofort-Aktionen (posten, reagieren, Vorschau, prüfen), Kennzahlen des Tages, Auslastung der Tageslimits, Zeitplan mit Countdown, 14-Tage-Verlauf, letzte Aktivität. |
+| **Regeln** | Hashtag-Regeln anlegen, ändern, löschen — Hashtags, Aktionen, Sprachen, Mindestresonanz, Gewicht, Antworthinweis. |
+| **Einstellungen** | Persona, Themen, Sendefenster, Wochentage, Limits, sämtliche Filter, Texterstellung. Dazu ein Editor für die rohe `config.yaml`. |
+| **Inhalte** | Vorlagendatei bearbeiten und Textvorschläge erzeugen, ohne etwas zu senden. |
+| **Aktivität** | Das vollständige Protokoll aller Aktionen, filterbar nach Art und Probelauf, mit Links zu den Beiträgen. |
+| **Einrichtung** | X- und Claude-Zugangsdaten eintragen und der Selbsttest (`doctor`) auf Knopfdruck. |
+| **Protokoll** | Die Logdatei live, mit Hervorhebung von Warnungen und Fehlern. |
+
+Änderungen an den Einstellungen werden **vor dem Speichern geprüft**. Ist
+etwas ungültig, bleibt die bisherige Datei unangetastet und die Meldung sagt,
+was nicht stimmt. Die Kommentare in der `config.yaml` überleben jede
+Bearbeitung im Browser, und vor jedem Schreiben entsteht eine `.bak`-Kopie.
+
+Wird die `config.yaml` von außen unbrauchbar gemacht, zeigt die Oberfläche
+statt eines Fehlers eine Reparaturseite mit dem Dateiinhalt — man kommt also
+auch ohne Terminal wieder heraus.
+
+### Sicherheit
+
+Diese Oberfläche kann im Namen deines Kontos auf X schreiben und verwaltet
+deine API-Schlüssel. Entsprechend ist sie abgesichert:
+
+* **Passwortpflicht.** Es gibt keinen Modus ohne Passwort. Ohne
+  `XBOT_WEB_PASSWORD` wird beim Start eines erzeugt und auf der Konsole
+  ausgegeben.
+* **Nur lokal.** Standardmäßig lauscht der Server auf `127.0.0.1`. Für
+  `--host 0.0.0.0` erscheint eine ausdrückliche Warnung.
+* **CSRF-Schutz** auf jeder schreibenden Anfrage, Sitzungscookie signiert,
+  `HttpOnly` und `SameSite=Lax`.
+* **Bremse** nach fünf Fehlversuchen.
+* **Sicherheitsheader**: strenge Content-Security-Policy, `X-Frame-Options:
+  DENY`, `nosniff`, kein Referrer, `no-store` hinter der Anmeldung.
+* **Geheimnisse bleiben geheim.** Gespeicherte Schlüssel werden nie wieder
+  angezeigt — nur, ob sie gesetzt sind. Die `.env` wird mit Rechten `0600`
+  geschrieben.
+
+Soll die Oberfläche über das Netz erreichbar sein, gehört ein HTTPS-Proxy
+davor und `XBOT_WEB_HTTPS=true` gesetzt, damit das Sitzungscookie nur
+verschlüsselt übertragen wird.
+
+### Umgebungsvariablen
+
+| Variable | Bedeutung |
+|---|---|
+| `XBOT_WEB_PASSWORD` | Passwort der Oberfläche. Ohne Vorgabe wird eines erzeugt. |
+| `XBOT_WEB_SECRET` | Signaturschlüssel der Sitzung. Ohne Vorgabe wird einer in der Datenbank abgelegt, damit Anmeldungen einen Neustart überleben. |
+| `XBOT_WEB_HTTPS` | `true`, wenn ein HTTPS-Proxy davorsteht. Setzt das Cookie auf `Secure`. |
+
+### Wie es intern läuft
+
+Flask bedient jede Anfrage in einem eigenen Thread, während der Bot eine
+SQLite-Verbindung und einen Taktgeber besitzt. Damit sich daraus keine
+doppelten Likes und keine Datenbankkonflikte ergeben, besitzt **genau ein
+Arbeits-Thread** den Bot. Er führt geplante Läufe und manuell ausgelöste
+Befehle nacheinander aus; Webanfragen legen nur einen Auftrag in eine
+Warteschlange und bekommen sofort eine Auftragsnummer zurück. Lesende
+Zugriffe öffnen ihre eigene kurzlebige Datenbankverbindung — SQLite läuft im
+WAL-Modus und verträgt beliebig viele Leser neben einem Schreiber.
+
+---
+
 ## Zugangsdaten bei X einrichten
 
 Hier scheitern die meisten Einrichtungen. Die Reihenfolge ist entscheidend.
+
+> Wer die Weboberfläche nutzt, trägt die Werte unter **Einrichtung** ein und
+> drückt dort auf *Einrichtung prüfen* — die Schritte 5 und 6 unten entfallen
+> dann. Die Reihenfolge im Developer Portal bleibt trotzdem entscheidend.
 
 1. **Entwicklerkonto anlegen:** [developer.x.com](https://developer.x.com/en/portal/dashboard)
 
@@ -305,8 +399,17 @@ python -m xbot post --force         # Zeitfenster ignorieren (Limits gelten weit
 python -m xbot post --topic "CI/CD" # Thema vorgeben
 python -m xbot engage               # einmal auf Hashtags reagieren
 python -m xbot run                  # Dauerbetrieb
+python -m xbot web                  # Weboberfläche auf http://127.0.0.1:8080
 python -m xbot stats                # Auswertung
 ```
+
+`xbot web` kennt zusätzlich:
+
+| Flag | Bedeutung |
+|---|---|
+| `--host` | Adresse, Standard `127.0.0.1` (nur lokal erreichbar) |
+| `--port` | Port, Standard `8080` |
+| `--password` | Passwort der Oberfläche, sonst `XBOT_WEB_PASSWORD` |
 
 Globale Flags funktionieren vor und nach dem Befehl:
 
@@ -344,6 +447,10 @@ python -m xbot --live engage
 python -m xbot --live run
 ```
 
+Im Browser geht derselbe Weg über die Schaltflächen auf der Übersicht:
+*Vorschau* → *Jetzt reagieren* → *Echtbetrieb einschalten* (mit Rückfrage) →
+*Bot starten*.
+
 Alternativ dauerhaft über die `.env`:
 
 ```dotenv
@@ -362,10 +469,19 @@ der Bot ohne Dateiänderung stoppen.
 ```bash
 cp config.example.yaml config.yaml
 cp .env.example .env
-# beide Dateien ausfüllen
+# beide Dateien ausfüllen, mindestens XBOT_WEB_PASSWORD setzen
 
 docker compose up -d
 docker compose logs -f
+```
+
+Der Container startet die **Weboberfläche** auf `http://127.0.0.1:8080`.
+Von dort aus lässt sich alles Weitere einstellen, auch der Echtbetrieb.
+
+Nur den Taktgeber ohne Oberfläche starten:
+
+```bash
+docker compose run --rm xbot run
 ```
 
 Für den Echtbetrieb in `docker-compose.yml`:
@@ -497,11 +613,21 @@ xbot/
 ├── actions/
 │   ├── post.py         Beiträge erstellen und veröffentlichen
 │   └── engage.py       Hashtag-Monitoring
-└── content/
-    ├── generator.py    KI-Texte mit Vorlagen-Rückfall
-    ├── templates.py    YAML-Bausteine
-    ├── prompts.py      Prompts inkl. Injection-Schutz
-    └── text.py         Säubern, Kürzen, Wiederholungserkennung
+├── content/
+│   ├── generator.py    KI-Texte mit Vorlagen-Rückfall
+│   ├── templates.py    YAML-Bausteine
+│   ├── prompts.py      Prompts inkl. Injection-Schutz
+│   └── text.py         Säubern, Kürzen, Wiederholungserkennung
+└── web/                Weboberfläche (optional)
+    ├── app.py          Flask-Factory, Sitzung, Fehlerseiten
+    ├── runner.py       Arbeits-Thread, der den Bot besitzt
+    ├── auth.py         Anmeldung, CSRF, Sicherheitsheader
+    ├── settings_io.py  config.yaml und .env schreiben
+    ├── forms.py        Formulardaten → Konfigurationsänderungen
+    ├── server.py       Serverstart (waitress)
+    ├── views/          Seiten und JSON-Schnittstelle
+    ├── templates/      Jinja2-Vorlagen
+    └── static/         CSS und JavaScript, ohne Build-Schritt
 ```
 
 ### Ablauf eines Engagement-Durchlaufs
@@ -535,10 +661,13 @@ pip install -r requirements-dev.txt
 python -m pytest                              # alle Tests
 python -m pytest --cov=xbot --cov-report=term-missing
 python -m pytest tests/test_filters.py -v     # einzelne Datei
+python -m pytest tests/test_web.py -v         # nur die Weboberfläche
 ```
 
-208 Tests, rund 85 % Abdeckung. Getestet wird ohne Netzzugriff: die X-API und
-die Claude-API werden durch Doppel ersetzt, die Zeit wird simuliert.
+268 Tests, rund 86 % Abdeckung. Getestet wird ohne Netzzugriff: die X-API und
+die Claude-API werden durch Doppel ersetzt, die Zeit wird simuliert. Die
+Weboberfläche läuft im Test-Client von Flask — inklusive Anmeldung,
+CSRF-Prüfung, Schreiben der Konfiguration und der Auftragsabwicklung.
 
 ---
 
@@ -555,6 +684,11 @@ die Claude-API werden durch Doppel ersetzt, die Zeit wird simuliert.
 | Immer dieselben Texte | Zu wenige Vorlagen. `content/templates.yaml` erweitern oder KI aktivieren. |
 | `Alle Vorlagen ähneln bereits veröffentlichten Texten` | Der Vorrat ist aufgebraucht. Vorlagen ergänzen oder `similarity_threshold` senken. |
 | Bot antwortet unpassend | `reply_instruction` in der Regel schärfen, `persona` präzisieren — oder `reply` aus `actions` entfernen. |
+| `xbot web` bricht mit `ModuleNotFoundError` ab | `pip install -r requirements-web.txt` |
+| Oberfläche fragt jedes Mal ein neues Passwort ab | `XBOT_WEB_PASSWORD` ist nicht gesetzt, es wird pro Start eines erzeugt. In die `.env` eintragen. |
+| Abmeldung nach jedem Neustart | Passiert nur, wenn die Datenbank nicht beschreibbar ist — der Sitzungsschlüssel wird dort abgelegt. Sonst `XBOT_WEB_SECRET` setzen. |
+| Schalter „Echtbetrieb" wirkt nicht | Prüfe, ob `XBOT_DRY_RUN` gesetzt ist; die Variable sticht die Datei. Die Oberfläche zieht sie mit, wenn sie gesetzt ist — beim Start über andere Wege kann sie hängenbleiben. |
+| Oberfläche zeigt eine Reparaturseite | Die `config.yaml` ist ungültig. Der Text steht direkt auf der Seite, Speichern prüft ihn erneut. |
 
 Bei unklaren Fällen hilft:
 

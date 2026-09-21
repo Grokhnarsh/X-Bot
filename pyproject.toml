@@ -17,13 +17,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+web = ["Flask>=3.0,<4", "ruamel.yaml>=0.18,<0.19", "waitress>=3.0,<4"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "Flask>=3.0,<4", "ruamel.yaml>=0.18,<0.19"]
 
 [project.scripts]
 xbot = "xbot.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["xbot*"]
+
+[tool.setuptools.package-data]
+"xbot.web" = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

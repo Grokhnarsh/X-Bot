@@ -26,6 +26,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
+          pip install -r requirements-web.txt
 
       - name: Tests
         run: python -m pytest -q --cov=xbot --cov-report=term-missing
@@ -35,3 +36,17 @@ jobs:
           cp config.example.yaml config.yaml
           python -m xbot -q doctor || true
           python -m xbot -q preview -n 2
+
+      - name: Weboberflaeche startet
+        env:
+          XBOT_WEB_PASSWORD: ci-testpasswort
+        run: |
+          python - <<'EOF'
+          from xbot.web import create_app
+          app = create_app("config.yaml", setup_logging=False)
+          client = app.test_client()
+          assert client.get("/login").status_code == 200
+          assert client.get("/").status_code == 302
+          app.extensions["xbot_runner"].shutdown()
+          print("Weboberflaeche laeuft an.")
+          EOF

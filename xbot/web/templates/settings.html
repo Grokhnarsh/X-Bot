@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen - X-Bot{% endblock %}
+{% block heading %}Einstellungen{% endblock %}
+{% block subheading %}Wird in die config.yaml geschrieben. Kommentare bleiben erhalten.{% endblock %}
+
+{% macro switch(path, label, desc, value) %}
+  <label class="check">
+    <input type="hidden" name="bool:{{ path }}" value="0">
+    <input type="checkbox" name="bool:{{ path }}" value="1" {% if value %}checked{% endif %}>
+    <span>{{ label }}{% if desc %}<br><span class="muted" style="font-size:12px">{{ desc }}</span>{% endif %}</span>
+  </label>
+{% endmacro %}
+
+{% macro number(path, label, value, desc='', min=0, step=1, max=none) %}
+  <div class="field">
+    <label>{{ label }}</label>
+    {% if desc %}<div class="desc">{{ desc }}</div>{% endif %}
+    <input type="number" name="int:{{ path }}" value="{{ value }}" min="{{ min }}" step="{{ step }}"
+           {% if max is not none %}max="{{ max }}"{% endif %}>
+  </div>
+{% endmacro %}
+
+{% macro textline(path, label, value, desc='', placeholder='') %}
+  <div class="field">
+    <label>{{ label }}</label>
+    {% if desc %}<div class="desc">{{ desc }}</div>{% endif %}
+    <input type="text" name="csv:{{ path }}" value="{{ value|join(', ') }}" placeholder="{{ placeholder }}">
+  </div>
+{% endmacro %}
+
+{% block content %}
+
+<form method="post" action="{{ url_for('pages.settings_save') }}">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+  {# -------------------------------------------------------------- Bot #}
+  <div class="card">
+    <fieldset style="margin:0">
+      <legend>Der Account</legend>
+
+      <div class="inline" style="margin-bottom:14px">
+        <div class="field">
+          <label>Sprache der Beiträge</label>
+          <input type="text" name="str:bot.language" value="{{ config.bot.language }}" style="width:90px">
+        </div>
+        <div class="field" style="flex:1;min-width:220px">
+          <label>Zeitzone</label>
+          <div class="desc">IANA-Name, bestimmt Sendefenster und Tagesgrenze.</div>
+          <input type="text" name="str:bot.timezone" value="{{ config.bot.timezone }}">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Persona</label>
+        <div class="desc">Geht wörtlich in den KI-Prompt. Je konkreter, desto besser die Texte.</div>
+        <textarea name="text:bot.persona" rows="3">{{ config.bot.persona }}</textarea>
+      </div>
+
+      <div class="field">
+        <label>Themen</label>
+        <div class="desc">Ein Thema je Zeile. Pro Beitrag wird eines gezogen.</div>
+        <textarea name="lines:bot.topics" rows="5">{{ config.bot.topics|join('\n') }}</textarea>
+      </div>
+    </fieldset>
+  </div>
+
+  {# ---------------------------------------------------------- Posting #}
+  <div class="card">
+    <fieldset style="margin:0">
+      <legend>Eigene Beiträge</legend>
+
+      {{ switch('posting.enabled', 'Beiträge veröffentlichen', 'Schaltet den Posting-Takt insgesamt ein oder aus.', config.posting.enabled) }}
+
+      <div class="inline" style="margin:16px 0 14px">
+        {{ number('posting.interval_minutes', 'Abstand (Min.)', config.posting.interval_minutes, min=1) }}
+        {{ number('posting.jitter_minutes', 'Streuung (Min.)', config.posting.jitter_minutes, desc='gegen Taktmuster') }}
+        {{ number('posting.max_per_day', 'Höchstens pro Tag', config.posting.max_per_day) }}
+      </div>
+
+      <div class="field">
+        <label>Sendefenster (Ortszeit)</label>
+        <div class="desc">Von Stunde bis Stunde. Start muss kleiner als Ende sein.</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="number" name="intlist:posting.active_hours" value="{{ config.posting.active_hours[0] }}" min="0" max="23" style="width:88px">
+          <span class="muted">bis</span>
+          <input type="number" name="intlist:posting.active_hours" value="{{ config.posting.active_hours[1] }}" min="0" max="23" style="width:88px">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Wochentage</label>
+        <input type="hidden" name="intlist:posting.active_weekdays" value="">
+        <div class="check-row">
+          {% for name in weekday_names %}
+            <label class="check">
+              <input type="checkbox" name="intlist:posting.active_weekdays" value="{{ loop.index0 }}"
+                     {% if loop.index0 in config.posting.active_weekdays %}checked{% endif %}>
+              <span>{{ name }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      {{ switch('posting.include_hashtags', 'Hashtags anhängen', '', config.posting.include_hashtags) }}
+      <div class="inline" style="margin-top:12px">
+        {{ number('posting.max_hashtags', 'Höchstens', config.posting.max_hashtags, max=10) }}
+        <div class="field" style="flex:1;min-width:260px">
+          <label>Hashtag-Vorrat</label>
+          <div class="desc">Aus dieser Liste wird zufällig gewählt.</div>
+          <input type="text" name="csv:posting.hashtag_pool" value="{{ config.posting.hashtag_pool|join(', ') }}">
+        </div>
+      </div>
+    </fieldset>
+  </div>
+
+  {# ------------------------------------------------------- Engagement #}
+  <div class="card">
+    <fieldset style="margin:0">
+      <legend>Auf Hashtags reagieren</legend>
+
+      {{ switch('engagement.enabled', 'Hashtag-Monitoring aktiv', 'Braucht mindestens die Zugriffsstufe Basic bei X.', config.engagement.enabled) }}
+
+      <div class="inline" style="margin:16px 0 0">
+        {{ number('engagement.interval_minutes', 'Abstand (Min.)', config.engagement.interval_minutes, min=1) }}
+        {{ number('engagement.jitter_minutes', 'Streuung (Min.)', config.engagement.jitter_minutes) }}
+        {{ number('engagement.max_results_per_query', 'Treffer je Suche', config.engagement.max_results_per_query, desc='10 bis 100', min=10, max=100) }}
+        {{ number('engagement.lookback_minutes', 'Rückblick (Min.)', config.engagement.lookback_minutes, desc='höchstens 7 Tage', min=1) }}
+        {{ number('engagement.max_actions_per_cycle', 'Aktionen je Durchlauf', config.engagement.max_actions_per_cycle) }}
+      </div>
+    </fieldset>
+  </div>
+
+  {# ----------------------------------------------------------- Limits #}
+  <div class="card">
+    <fieldset style="margin:0">
+      <legend>Limits</legend>
+      <p class="hint">Der wichtigste Schutz des Kontos. <strong>0</strong> schaltet eine Aktion vollständig ab.</p>
+
+      <div class="grid cols-4" style="gap:10px">
+        {% for action in actions %}
+          <div class="tile">
+            <div class="label" style="margin-bottom:8px">{{ action_labels[action] }}</div>
+            <div class="field" style="margin-bottom:8px">
+              <label style="font-size:12px;font-weight:500">je Stunde</label>
+              <input type="number" name="int:engagement.limits.{{ action }}_per_hour"
+                     value="{{ config.engagement.limits.per_hour(action) }}" min="0" style="max-width:100%">
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label style="font-size:12px;font-weight:500">je Tag</label>
+              <input type="number" name="int:engagement.limits.{{ action }}_per_day"
+                     value="{{ config.engagement.limits.per_day(action) }}" min="0" style="max-width:100%">
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div style="margin-top:14px">
+        {{ number('engagement.limits.min_seconds_between_actions', 'Mindestabstand zwischen zwei Aktionen (Sek.)',
+                  config.engagement.limits.min_seconds_between_actions,
+                  desc='Verhindert Aktionssalven, die maschinell aussehen.') }}
+      </div>
+    </fieldset>
+  </div>
+
+  {# ----------------------------------------------------------- Filter #}
+  <div class="card">
+    <fieldset style="margin:0">
+      <legend>Sicherheitsfilter</legend>
+      <p class="hint">Greifen vor jeder Aktion auf einen fremden Beitrag.</p>
+
+      {{ textline('filters.languages', 'Sprachen', config.filters.languages, 'Leer = alle zulassen.', 'de, en') }}
+
+      <div class="field">
+        <label>Gesperrte Begriffe</label>
+        <div class="desc">Ein Begriff je Zeile. Enthält ein Beitrag einen davon, wird er nie berührt.</div>
+        <textarea name="lines:filters.blocked_keywords" rows="5">{{ config.filters.blocked_keywords|join('\n') }}</textarea>
+      </div>
+
+      <div class="inline">
+        <div class="field" style="flex:1;min-width:240px">
+          <label>Gesperrte Accounts</label>
+          <div class="desc">ohne @</div>
+          <input type="text" name="csv:filters.blocked_users" value="{{ config.filters.blocked_users|join(', ') }}">
+        </div>
+        <div class="field" style="flex:1;min-width:240px">
+          <label>Positivliste</label>
+          <div class="desc">Gesetzt = nur noch auf diese Accounts reagieren.</div>
+          <input type="text" name="csv:filters.allowed_users" value="{{ config.filters.allowed_users|join(', ') }}">
+        </div>
+      </div>
+
+      <div class="check-row" style="margin:16px 0">
+        {{ switch('filters.skip_retweets', 'Retweets überspringen', '', config.filters.skip_retweets) }}
+        {{ switch('filters.skip_replies', 'Antworten überspringen', '', config.filters.skip_replies) }}
+        {{ switch('filters.skip_quotes', 'Zitate überspringen', '', config.filters.skip_quotes) }}
+        {{ switch('filters.skip_sensitive', 'Sensibles überspringen', '', config.filters.skip_sensitive) }}
+        {{ switch('filters.skip_links', 'Beiträge mit Links überspringen', '', config.filters.skip_links) }}
+        {{ switch('filters.require_verified', 'Nur verifizierte Autoren', '', config.filters.require_verified) }}
+      </div>
+
+      <div class="inline">
+        {{ number('filters.max_hashtags_in_tweet', 'Max. Hashtags', config.filters.max_hashtags_in_tweet, desc='Spam-Erkennung') }}
+        {{ number('filters.max_mentions_in_tweet', 'Max. Erwähnungen', config.filters.max_mentions_in_tweet) }}
+        {{ number('filters.min_tweet_length', 'Mindestlänge', config.filters.min_tweet_length, desc='ohne Links und Hashtags') }}
+        {{ number('filters.min_author_followers', 'Min. Follower', config.filters.min_author_followers) }}
+        {{ number('filters.max_author_followers', 'Max. Follower', config.filters.max_author_followers, desc='0 = keine Grenze') }}
+      </div>
+    </fieldset>
+  </div>
+
+  {# ---------------------------------------------------------- Inhalte #}
+  <div class="card">
+    <fieldset style="margin:0">
+      <legend>Texterstellung</legend>
+
+      <div class="inline" style="margin-bottom:14px">
+        <div class="field">
+          <label>Quelle</label>
+          <select name="str:content.provider">
+            {% for value, label in [('auto', 'KI, sonst Vorlagen'), ('ai', 'nur KI'), ('template', 'nur Vorlagen')] %}
+              <option value="{{ value }}" {% if config.content.provider == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label>Modell</label>
+          <input type="text" name="str:content.model" value="{{ config.content.model }}" style="width:200px">
+        </div>
+        <div class="field">
+          <label>Denktiefe</label>
+          <select name="str:content.effort">
+            {% for value in ['low', 'medium', 'high', 'xhigh', 'max'] %}
+              <option value="{{ value }}" {% if config.content.effort == value %}selected{% endif %}>{{ value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {{ number('content.max_chars', 'Max. Zeichen', config.content.max_chars, min=20, max=280) }}
+      </div>
+
+      <div class="inline">
+        <div class="field">
+          <label>Ähnlichkeitsschwelle</label>
+          <div class="desc">Ab hier gilt ein Text als Wiederholung (0 bis 1).</div>
+          <input type="number" name="float:content.similarity_threshold" min="0" max="1" step="0.05"
+                 value="{{ config.content.similarity_threshold }}">
+        </div>
+        {{ number('content.max_generation_attempts', 'Versuche je Text', config.content.max_generation_attempts, min=1, max=10) }}
+      </div>
+    </fieldset>
+  </div>
+
+  <div class="btn-row" style="margin-top:4px">
+    <button type="submit" class="btn primary">Alle Einstellungen speichern</button>
+    <a class="btn" href="{{ url_for('pages.settings') }}">Verwerfen</a>
+  </div>
+</form>
+
+{# --------------------------------------------------------- Rohes YAML #}
+<div class="card" style="margin-top:22px">
+  <details class="editor">
+    <summary style="font-size:14px">Konfigurationsdatei direkt bearbeiten</summary>
+    <div>
+      <p class="hint">Für alles, was die Formulare oben nicht abdecken. Der Text wird vor
+         dem Speichern geprüft - bei einem Fehler bleibt die bisherige Datei unverändert.</p>
+      <form method="post" action="{{ url_for('pages.settings_raw') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <textarea name="raw" class="code" rows="26" spellcheck="false">{{ raw }}</textarea>
+        <div class="btn-row" style="margin-top:12px">
+          <button type="submit" class="btn">YAML speichern</button>
+        </div>
+      </form>
+    </div>
+  </details>
+</div>
+
+{% endblock %}

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Konfiguration prüfen - X-Bot</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="main" style="max-width:900px;margin:0 auto">
+  <div class="topbar">
+    <div>
+      <h1>Die Konfiguration lässt sich nicht laden</h1>
+      <div class="sub">{{ path }}</div>
+    </div>
+  </div>
+
+  <div class="note error" style="margin-bottom:16px">
+    <span class="mark">x</span><span>{{ error }}</span>
+  </div>
+
+  <div class="card">
+    <h2>Direkt korrigieren</h2>
+    <p class="hint">Der Text wird vor dem Speichern geprüft. Solange er ungültig ist,
+       bleibt die bisherige Datei unverändert.</p>
+    <form method="post" action="{{ url_for('pages.settings_raw') }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <textarea name="raw" class="code" rows="24" spellcheck="false">{{ raw }}</textarea>
+      <div class="btn-row" style="margin-top:12px">
+        <button type="submit" class="btn primary">Speichern und erneut laden</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
