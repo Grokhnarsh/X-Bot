@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<title>X-Bot — der Bot, der vor dem Limit stehenbleibt</title>
+<meta name="description" content="Selbst gehosteter Automatisierungsbot fuer X: schreibt Beitraege, liked, teilt und reagiert auf Hashtags — mit Probelauf als Standard, harten Limits und Filtern, die das Konto schuetzen. Open Source, Python, MIT.">
+<link rel="canonical" href="https://grokhnarsh.github.io/X-Bot/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233D8BFF'/%3E%3Ctext x='16' y='23' font-family='sans-serif' font-size='18' font-weight='bold' fill='%23061019' text-anchor='middle'%3EX%3C/text%3E%3C/svg%3E">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="X-Bot">
+<meta property="og:title" content="X-Bot — der Bot, der vor dem Limit stehenbleibt">
+<meta property="og:description" content="Selbst gehosteter Automatisierungsbot fuer X: schreibt Beitraege, liked, teilt und reagiert auf Hashtags — mit Probelauf als Standard, harten Limits und Filtern, die das Konto schuetzen. Open Source, Python, MIT.">
+<meta property="og:url" content="https://grokhnarsh.github.io/X-Bot/">
+<meta property="og:image" content="https://grokhnarsh.github.io/X-Bot/dashboard.png">
+<meta property="og:image:alt" content="Die Weboberflaeche von X-Bot mit Tageslimits und Aktionsverlauf.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="X-Bot — der Bot, der vor dem Limit stehenbleibt">
+<meta name="twitter:description" content="Selbst gehosteter Automatisierungsbot fuer X: schreibt Beitraege, liked, teilt und reagiert auf Hashtags — mit Probelauf als Standard, harten Limits und Filtern, die das Konto schuetzen. Open Source, Python, MIT.">
+<meta name="twitter:image" content="https://grokhnarsh.github.io/X-Bot/dashboard.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* Der Artifact-Rahmen liefert diese Grundlagen sonst mit; als eigenstaendige
+   Seite muessen sie hier stehen. */
+:root {
+  color-scheme: dark;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+[hidden] { display: none !important; }
+</style>
+
+<style>
+/* ===========================================================================
+   X-Bot — Produktseite
+
+   Gestaltungswelt: Instrumentenbrett. Das Produkt verkauft Zurueckhaltung,
+   nicht Reichweite — also ist das wiederkehrende Bauteil der Messbalken,
+   der vor dem Limit stehenbleibt. Bewusst eine einzige, durchgaengig
+   gemalte dunkle Welt (Cockpit), kein Theme-Wechsel.
+   =========================================================================== */
+
+:root {
+  /* Grund: blaustichiges Tintenschwarz, kein reines Schwarz */
+  --ink:        #0B1017;
+  --ink-2:      #101822;
+  --ink-3:      #16202C;
+  --line:       #1E2A38;
+  --line-soft:  #172230;
+
+  /* Schrift */
+  --fg:         #E9EEF5;
+  --fg-2:       #9DACBE;
+  --fg-3:       #64748B;
+
+  /* Signale */
+  --blue:       #3D8BFF;
+  --blue-dim:   #1D4E8F;
+  --blue-wash:  #10203A;
+  --amber:      #F5A524;
+  --amber-dim:  #6B4A12;
+
+  --display: "Bricolage Grotesque", "Archivo", system-ui, sans-serif;
+  --body:    "Archivo", system-ui, -apple-system, sans-serif;
+  --mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --gut: clamp(16px, 4vw, 40px);
+  --max: 1180px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+img { max-width: 100%; height: auto; display: block; }
+
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 2px; }
+
+.wrap {
+  max-width: var(--max);
+  margin-inline: auto;
+  padding-inline: var(--gut);
+}
+
+/* --- Wiederkehrende Bauteile ---------------------------------------------- */
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin: 0;
+}
+
+h2 {
+  font-family: var(--display);
+  font-size: clamp(26px, 4.2vw, 38px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+
+h3 {
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+}
+
+p { margin: 0 0 14px; max-width: 62ch; color: var(--fg-2); }
+p strong { color: var(--fg); font-weight: 600; }
+
+/* Messbalken: das Strukturelement der Seite */
+.meter { height: 5px; background: var(--ink-3); border-radius: 99px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--blue); border-radius: 99px; }
+.meter.warn > i { background: var(--amber); }
+
+/* --- Kopfzeile ------------------------------------------------------------ */
+.topbar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 40;
+  background: color-mix(in srgb, var(--ink) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line-soft);
+}
+.topbar .wrap {
+  display: flex; align-items: center; gap: 22px;
+  padding-block: 13px;
+}
+.logo {
+  display: flex; align-items: center; gap: 9px;
+  font-family: var(--display); font-weight: 700; font-size: 16px;
+  letter-spacing: -0.02em; color: var(--fg);
+}
+.logo:hover { text-decoration: none; }
+.logo-mark {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: var(--blue); color: #061019;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 800;
+}
+.topnav { display: flex; gap: 20px; margin-left: auto; align-items: center; }
+.topnav a {
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em;
+  color: var(--fg-2);
+}
+.topnav a:hover { color: var(--fg); text-decoration: none; }
+.topnav .ghost {
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 6px 12px; color: var(--fg);
+}
+.topnav .ghost:hover { border-color: var(--blue-dim); background: var(--blue-wash); }
+@media (max-width: 720px) { .topnav .hide-sm { display: none; } }
+
+/* --- Held ----------------------------------------------------------------- */
+.hero { padding-block: clamp(52px, 9vw, 96px) clamp(40px, 6vw, 72px); }
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: clamp(32px, 5vw, 64px);
+  align-items: start;
+}
+@media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; } }
+
+.hero h1 {
+  font-family: var(--display);
+  font-size: clamp(40px, 7.4vw, 74px);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  margin: 16px 0 20px;
+  text-wrap: balance;
+}
+.hero h1 em {
+  font-style: normal;
+  color: var(--amber);
+}
+.hero .lead { font-size: 17.5px; line-height: 1.62; max-width: 52ch; }
+
+.hero-cta { display: flex; flex-wrap: wrap; gap: 11px; margin-top: 26px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 13px; font-weight: 500;
+  padding: 11px 18px; border-radius: 8px;
+  border: 1px solid transparent; cursor: pointer;
+}
+.btn:hover { text-decoration: none; }
+.btn-primary { background: var(--blue); color: #061019; font-weight: 700; }
+.btn-primary:hover { background: #5b9dff; }
+.btn-ghost { border-color: var(--line); color: var(--fg); background: transparent; }
+.btn-ghost:hover { border-color: var(--blue-dim); background: var(--blue-wash); }
+
+.facts {
+  display: flex; flex-wrap: wrap; gap: 8px 22px;
+  margin-top: 30px; padding-top: 22px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--mono); font-size: 11.5px; color: var(--fg-3);
+  letter-spacing: 0.03em;
+}
+.facts b { color: var(--fg-2); font-weight: 500; }
+
+/* Instrumenten-Panel im Helden */
+.panel {
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+}
+.panel-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 4px;
+}
+.panel-head .t {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--fg-3);
+}
+.panel-head .s {
+  font-family: var(--mono); font-size: 11px; color: var(--amber);
+}
+.gauges { display: grid; gap: 15px; margin-top: 18px; }
+.gauge { display: grid; grid-template-columns: 74px 1fr auto; gap: 12px; align-items: center; }
+.gauge .n { font-family: var(--mono); font-size: 12px; color: var(--fg-2); }
+.gauge .v {
+  font-family: var(--mono); font-size: 12px; color: var(--fg-3);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.gauge .meter > i { width: 0; transition: width 1.4s cubic-bezier(.22,.9,.28,1); }
+.panel-note {
+  margin: 20px 0 0; padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 13.5px; line-height: 1.55; color: var(--fg-2); max-width: none;
+}
+.panel-note b { color: var(--fg); font-weight: 600; }
+
+/* --- Abschnitte ----------------------------------------------------------- */
+section.band { border-top: 1px solid var(--line-soft); }
+.band .wrap { padding-block: clamp(48px, 7vw, 84px); }
+
+.cols {
+  display: grid;
+  grid-template-columns: 172px minmax(0, 1fr);
+  gap: clamp(20px, 4vw, 52px);
+}
+@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); gap: 18px; } }
+/* Ohne min-width:0 waechst ein Grid-Kind auf seine Inhaltsbreite und
+   sprengt bei schmalen Fenstern die Seite — die Code-Bloecke tun genau das. */
+.cols > *, .step > * { min-width: 0; }
+.rail { padding-top: 6px; }
+
+/* --- Aktionstabelle ------------------------------------------------------- */
+.acts { display: grid; gap: 0; margin-top: 26px; }
+.act {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 150px 94px;
+  gap: 16px; align-items: center;
+  padding: 16px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.act:last-child { border-bottom: 1px solid var(--line-soft); }
+.act .idx { font-family: var(--mono); font-size: 11px; color: var(--fg-3); }
+.act .name { font-family: var(--display); font-weight: 600; font-size: 16.5px; }
+.act .desc { color: var(--fg-2); font-size: 14px; line-height: 1.45; margin: 2px 0 0; max-width: none; }
+.act .lim {
+  font-family: var(--mono); font-size: 11.5px; color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.act .bar { width: 94px; }
+@media (max-width: 760px) {
+  .act { grid-template-columns: 22px minmax(0, 1fr); }
+  .act .lim { grid-column: 2; margin-top: 2px; }
+  .act .bar { display: none; }
+}
+
+/* --- Ablehnungen ---------------------------------------------------------- */
+.refuse {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 clamp(20px, 4vw, 44px); margin-top: 24px;
+}
+@media (max-width: 720px) { .refuse { grid-template-columns: 1fr; } }
+.ref {
+  display: grid; grid-template-columns: 16px 1fr; gap: 11px;
+  align-items: baseline;
+  padding: 11px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.ref .x { color: var(--amber); font-family: var(--mono); font-size: 12px; }
+.ref .r {
+  font-family: var(--mono); font-size: 12.5px; color: var(--fg-2);
+  line-height: 1.45; overflow-wrap: anywhere;
+}
+.caption {
+  margin-top: 22px; font-size: 13px; color: var(--fg-3);
+  border-left: 2px solid var(--amber-dim); padding-left: 14px; max-width: 60ch;
+}
+
+/* --- Produktbild ---------------------------------------------------------- */
+.shot {
+  margin-top: 30px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--ink-2);
+}
+.shot-bar {
+  display: flex; align-items: center; gap: 7px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line);
+}
+.shot-bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-3); }
+.shot-bar span {
+  margin-left: 8px; font-family: var(--mono); font-size: 11px; color: var(--fg-3);
+}
+.shot img { display: block; width: 100%; }
+
+.featlist { display: grid; gap: 0; margin-top: 26px; }
+.feat { padding: 16px 0; border-top: 1px solid var(--line-soft); }
+.feat:last-child { border-bottom: 1px solid var(--line-soft); }
+.feat p { margin: 4px 0 0; font-size: 14.5px; max-width: 64ch; }
+
+/* --- Code ----------------------------------------------------------------- */
+.code {
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 15px 17px;
+  font-family: var(--mono); font-size: 13px; line-height: 1.8;
+  color: var(--fg-2);
+  overflow-x: auto;
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.code .c { color: var(--fg-3); }
+.code .k { color: var(--blue); }
+.code .s { color: var(--amber); }
+.code b { color: var(--fg); font-weight: 500; }
+
+.steps { display: grid; gap: 22px; margin-top: 26px; counter-reset: s; }
+.step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 16px; }
+.step .num {
+  font-family: var(--mono); font-size: 11px; color: var(--amber);
+  padding-top: 3px;
+}
+.step h3 { margin-bottom: 8px; }
+.step p { font-size: 14.5px; margin-bottom: 10px; }
+
+/* --- Kleingedrucktes ------------------------------------------------------ */
+.fine { display: grid; gap: 0; margin-top: 24px; }
+.fine-row { padding: 15px 0; border-top: 1px solid var(--line-soft); }
+.fine-row:last-child { border-bottom: 1px solid var(--line-soft); }
+.fine-row .q {
+  font-family: var(--mono); font-size: 12px; color: var(--amber);
+  letter-spacing: 0.03em; margin-bottom: 5px;
+}
+.fine-row p { margin: 0; font-size: 14.5px; }
+
+/* --- Schluss -------------------------------------------------------------- */
+.close .wrap { padding-block: clamp(56px, 8vw, 96px); }
+.close h2 { font-size: clamp(30px, 5.4vw, 50px); max-width: 16ch; }
+
+footer { border-top: 1px solid var(--line-soft); }
+footer .wrap {
+  padding-block: 26px;
+  display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center;
+  font-family: var(--mono); font-size: 11.5px; color: var(--fg-3);
+}
+footer a { color: var(--fg-2); }
+footer .sep { margin-left: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+</style>
+
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="logo" href="#top"><span class="logo-mark">X</span> X-Bot</a>
+    <nav class="topnav">
+      <a class="hide-sm" href="#tut">Funktionen</a>
+      <a class="hide-sm" href="#netze">Sicherheit</a>
+      <a class="hide-sm" href="#start">Loslegen</a>
+      <a class="ghost" href="https://github.com/Grokhnarsh/X-Bot" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ================================================================ Held -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">Selbst gehostet · Python · MIT</p>
+        <h1>Der Bot, der <em>vor</em> dem Limit stehenbleibt.</h1>
+        <p class="lead">
+          X-Bot schreibt Beiträge, liked, teilt und antwortet auf die Hashtags,
+          die du festlegst. Das Bemerkenswerte ist, was er dabei alles sein
+          lässt — damit dein Konto den Monat übersteht.
+        </p>
+
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="https://github.com/Grokhnarsh/X-Bot" target="_blank" rel="noopener noreferrer">
+            Auf GitHub ansehen
+          </a>
+          <button class="btn btn-ghost" type="button" id="copycmd" data-cmd="pip install -r requirements-web.txt">
+            <span id="copylabel">pip install -r requirements-web.txt</span>
+          </button>
+        </div>
+
+        <div class="facts">
+          <span><b>268</b> Tests</span>
+          <span><b>86 %</b> Abdeckung</span>
+          <span><b>Probelauf</b> als Standard</span>
+          <span><b>Python</b> 3.11+</span>
+        </div>
+      </div>
+
+      <!-- Instrumenten-Panel: zeigt genau das, was die Seite behauptet -->
+      <div class="panel" id="panel">
+        <div class="panel-head">
+          <span class="t">Tageslimits · Standard</span>
+          <span class="s" id="panel-state">hält an</span>
+        </div>
+
+        <div class="gauges">
+          <div class="gauge">
+            <span class="n">Beiträge</span>
+            <span class="meter"><i data-fill="80"></i></span>
+            <span class="v">4 / 5</span>
+          </div>
+          <div class="gauge">
+            <span class="n">Likes</span>
+            <span class="meter"><i data-fill="62"></i></span>
+            <span class="v">50 / 80</span>
+          </div>
+          <div class="gauge">
+            <span class="n">Reposts</span>
+            <span class="meter warn-target"><i data-fill="93"></i></span>
+            <span class="v">14 / 15</span>
+          </div>
+          <div class="gauge">
+            <span class="n">Antworten</span>
+            <span class="meter"><i data-fill="25"></i></span>
+            <span class="v">3 / 12</span>
+          </div>
+        </div>
+
+        <p class="panel-note">
+          Ist ein Limit erreicht, <b>wartet der Bot</b> — bis zur nächsten Stunde
+          oder bis Mitternacht in deiner Zeitzone. Zwischen zwei Aktionen liegen
+          mindestens 30&nbsp;Sekunden, jeder Lauf ist zufällig gestreut.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ Was er tut -->
+  <section class="band" id="tut">
+    <div class="wrap cols">
+      <div class="rail"><p class="eyebrow">01 — Funktionen</p></div>
+      <div>
+        <h2>Vier Aktionen. Jede mit einer Obergrenze.</h2>
+        <p>
+          Du legst Regeln fest: welche Hashtags, welche Aktionen, ab welcher
+          Resonanz. Der Bot arbeitet sie ab, solange die Limits es zulassen.
+          Die Werte rechts sind die mitgelieferten Voreinstellungen — bewusst
+          niedrig angesetzt.
+        </p>
+
+        <div class="acts">
+          <div class="act">
+            <span class="idx">01</span>
+            <div>
+              <div class="name">Beiträge schreiben</div>
+              <p class="desc">Eigene Posts im Sendefenster, mit Themenpool und Hashtags aus deiner Liste.</p>
+            </div>
+            <span class="lim">5 / Tag · 2 / Std.</span>
+            <span class="meter bar"><i style="width:34%"></i></span>
+          </div>
+
+          <div class="act">
+            <span class="idx">02</span>
+            <div>
+              <div class="name">Liken</div>
+              <p class="desc">Die unaufdringlichste Aktion — der empfohlene Einstieg für die erste Woche.</p>
+            </div>
+            <span class="lim">80 / Tag · 12 / Std.</span>
+            <span class="meter bar"><i style="width:72%"></i></span>
+          </div>
+
+          <div class="act">
+            <span class="idx">03</span>
+            <div>
+              <div class="name">Teilen</div>
+              <p class="desc">Reposts nach denselben Regeln, deutlich strenger begrenzt als Likes.</p>
+            </div>
+            <span class="lim">15 / Tag · 3 / Std.</span>
+            <span class="meter bar"><i style="width:48%"></i></span>
+          </div>
+
+          <div class="act">
+            <span class="idx">04</span>
+            <div>
+              <div class="name">Antworten</div>
+              <p class="desc">Kontextbezogen, von Claude verfasst. Die riskanteste Aktion — zuletzt dazunehmen.</p>
+            </div>
+            <span class="lim">12 / Tag · 3 / Std.</span>
+            <span class="meter bar"><i style="width:40%"></i></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================================================== Was er nicht tut -->
+  <section class="band" id="netze">
+    <div class="wrap cols">
+      <div class="rail"><p class="eyebrow">02 — Zurückhaltung</p></div>
+      <div>
+        <h2>Was er nicht tut.</h2>
+        <p>
+          Jeder fremde Beitrag durchläuft die Filter, bevor irgendetwas passiert.
+          Das hier sind die tatsächlichen Begründungen, mit denen der Bot
+          Beiträge liegen lässt — wörtlich so, wie sie im Protokoll stehen.
+        </p>
+
+        <div class="refuse">
+          <div class="ref"><span class="x">×</span><span class="r">ist ein Retweet</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">ist eine Antwort</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">als sensibel markiert</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">Sprache 'fr' nicht in ['de', 'en']</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">enthält gesperrten Begriff 'gewinnspiel'</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">8 Hashtags (erlaubt: 5)</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">nur 5 Zeichen Inhalt (mindestens 30)</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">@neu hat 3 Follower (mindestens 30)</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">schon eine Aktion für diesen Autor in diesem Durchlauf</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">bereits bewertet</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">eigener Beitrag</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">Stundenlimit erreicht (12/12)</span></div>
+        </div>
+
+        <p class="caption">
+          Dazu: kein Tweet wird zweimal behandelt — auch über Neustarts hinweg,
+          weil jede Aktion in einer lokalen Datenbank steht. Und pro Durchlauf
+          rührt der Bot höchstens einen Beitrag je Person an.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================== Oberfläche -->
+  <section class="band" id="ui">
+    <div class="wrap cols">
+      <div class="rail"><p class="eyebrow">03 — Bedienung</p></div>
+      <div>
+        <h2>Alles im Browser. Das Terminal brauchst du einmal.</h2>
+        <p>
+          <code style="font-family:var(--mono);font-size:13.5px;color:var(--fg)">python -m xbot web</code> —
+          danach läuft die Einrichtung, das Regelwerk, der Umschalter zwischen
+          Probelauf und Echtbetrieb und das Protokoll auf einer Oberfläche, die
+          standardmäßig nur auf <span style="font-family:var(--mono);font-size:13.5px">127.0.0.1</span> lauscht.
+        </p>
+
+        <div class="shot">
+          <div class="shot-bar">
+            <i></i><i></i><i></i>
+            <span>127.0.0.1:8080 — Übersicht</span>
+          </div>
+          <img src="dashboard.png" width="1600" height="1211"
+               alt="Die Weboberfläche von X-Bot: Steuerung mit Start- und Echtbetrieb-Schalter, Kennzahlen des Tages, Auslastung der Tageslimits als Messbalken und ein Balkendiagramm der Aktionen der letzten 14 Tage.">
+        </div>
+
+        <div class="featlist">
+          <div class="feat">
+            <h3>Regeln ohne YAML</h3>
+            <p>Hashtags, Aktionen, Sprachen, Mindestresonanz und Gewichtung als Formular. Wer lieber direkt in der Datei arbeitet, bekommt den rohen Editor daneben — inklusive Prüfung vor dem Speichern.</p>
+          </div>
+          <div class="feat">
+            <h3>Der Schalter, der zählt</h3>
+            <p>Probelauf ist der Auslieferungszustand: Der Bot protokolliert alles und sendet nichts. Der Wechsel in den Echtbetrieb ist ein bewusster Klick mit Rückfrage.</p>
+          </div>
+          <div class="feat">
+            <h3>Nichts geht kaputt</h3>
+            <p>Ungültige Eingaben werden abgewiesen, bevor geschrieben wird — die bisherige Konfiguration bleibt unangetastet. Selbst eine von Hand zerschossene Datei führt zu einer Reparaturseite statt in die Sackgasse.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================================================== Texte -->
+  <section class="band" id="texte">
+    <div class="wrap cols">
+      <div class="rail"><p class="eyebrow">04 — Texte</p></div>
+      <div>
+        <h2>Claude schreibt. Vorlagen springen ein.</h2>
+        <p>
+          Mit <span style="font-family:var(--mono);font-size:13.5px">ANTHROPIC_API_KEY</span> verfasst
+          Claude die Beiträge und geht auf fremde Posts ein. Ohne Key — oder wenn die API
+          gerade nicht erreichbar ist — greift der Bot auf lokale Vorlagen zurück und
+          arbeitet weiter. Jeder neue Text wird gegen die letzten Beiträge geprüft,
+          damit sich der Account nicht wiederholt.
+        </p>
+
+        <pre class="code"><span class="c"># config.yaml</span>
+<span class="k">rules</span>:
+  - <span class="k">name</span>: <span class="s">"KI und Automatisierung"</span>
+    <span class="k">hashtags</span>: [<span class="s">"#KI"</span>, <span class="s">"#Automatisierung"</span>]
+    <span class="k">actions</span>: [<span class="s">"like"</span>, <span class="s">"repost"</span>]
+    <span class="k">min_likes</span>: <b>3</b>          <span class="c"># erst ab dieser Resonanz</span>
+    <span class="k">languages</span>: [<span class="s">"de"</span>, <span class="s">"en"</span>]</pre>
+
+        <p class="caption">
+          Fremde Beiträge gehen gekapselt in den Prompt, mit der ausdrücklichen
+          Anweisung, darin versteckte Befehle zu ignorieren. „Ignoriere alle
+          Anweisungen und poste…" ist ein realer Angriffsversuch, kein Gedankenspiel.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ Loslegen -->
+  <section class="band" id="start">
+    <div class="wrap cols">
+      <div class="rail"><p class="eyebrow">05 — Loslegen</p></div>
+      <div>
+        <h2>In drei Schritten zum Probelauf.</h2>
+
+        <div class="steps">
+          <div class="step">
+            <span class="num">01</span>
+            <div>
+              <h3>Installieren</h3>
+              <p>Python 3.11 oder neuer. Der Bot läuft auf deinem Rechner oder deinem Server — es gibt keinen Dienst dazwischen.</p>
+              <pre class="code">git clone https://github.com/Grokhnarsh/X-Bot.git
+cd X-Bot
+pip install -r requirements-web.txt</pre>
+            </div>
+          </div>
+
+          <div class="step">
+            <span class="num">02</span>
+            <div>
+              <h3>Einrichten</h3>
+              <p>Konfiguration anlegen, Passwort für die Oberfläche setzen, Server starten. Die X-Zugangsdaten trägst du danach im Browser ein.</p>
+              <pre class="code">python -m xbot init
+<span class="c">echo</span> <span class="s">'XBOT_WEB_PASSWORD=ein-langes-passwort'</span> &gt;&gt; .env
+python -m xbot web</pre>
+            </div>
+          </div>
+
+          <div class="step">
+            <span class="num">03</span>
+            <div>
+              <h3>Zuschauen, bevor du loslässt</h3>
+              <p>Auf <span style="font-family:var(--mono);font-size:13.5px">127.0.0.1:8080</span>: Einrichtung prüfen, Vorschau erzeugen, einen Reaktionsdurchlauf starten. Alles im Probelauf — es wird nichts gesendet. Erst wenn dir gefällt, was du siehst, legst du den Schalter um.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== Kleingedrucktes -->
+  <section class="band" id="fein">
+    <div class="wrap cols">
+      <div class="rail"><p class="eyebrow">06 — Vorher wissen</p></div>
+      <div>
+        <h2>Was dir sonst niemand vorher sagt.</h2>
+
+        <div class="fine">
+          <div class="fine-row">
+            <div class="q">Die Zugriffsstufe bei X entscheidet mit</div>
+            <p>Die Hashtag-Suche gibt es erst ab der Stufe <b style="color:var(--fg)">Basic</b>. Auf der Free-Stufe kann der Bot nur eigene Beiträge posten — Liken, Teilen und Antworten fallen aus, weil er ohne Suche nichts findet.</p>
+          </div>
+          <div class="fine-row">
+            <div class="q">Access Token zuletzt erzeugen</div>
+            <p>Erst die App-Berechtigung auf „Read and write" stellen, <b style="color:var(--fg)">dann</b> Token und Secret erzeugen. Vorher erzeugte Tokens bleiben dauerhaft schreibgeschützt — daran scheitern die meisten Einrichtungen.</p>
+          </div>
+          <div class="fine-row">
+            <div class="q">Die Regeln von X gelten weiter</div>
+            <p>Automatisierung ist erlaubt, Spam nicht. Die Voreinstellungen liegen weit unter jeder Schwelle, aber die Verantwortung für das Konto bleibt bei dir. Richte die Bot-Kennzeichnung im Profil ein.</p>
+          </div>
+          <div class="fine-row">
+            <div class="q">Antworten sind der heikle Teil</div>
+            <p>Automatisierte Antworten an Menschen, die nicht gefragt haben, sind der Bereich mit dem höchsten Risiko. Empfehlung: mit <b style="color:var(--fg)">like</b> starten, eine Woche mitlesen, dann erweitern.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================================================== Schluss -->
+  <section class="band close">
+    <div class="wrap">
+      <h2>Es liegt alles offen.</h2>
+      <p style="font-size:17px;max-width:56ch">
+        Kein Abo, kein Konto bei uns, kein Dienst zwischen dir und der X-API.
+        Der Quelltext steht unter MIT — lies nach, was der Bot in deinem Namen
+        tut, bevor du ihn lässt.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="https://github.com/Grokhnarsh/X-Bot" target="_blank" rel="noopener noreferrer">
+          Grokhnarsh/X-Bot
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/Grokhnarsh/X-Bot#readme" target="_blank" rel="noopener noreferrer">
+          Dokumentation lesen
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>X-Bot · MIT-Lizenz</span>
+    <a href="https://github.com/Grokhnarsh/X-Bot" target="_blank" rel="noopener noreferrer">Quelltext</a>
+    <a href="https://help.x.com/en/rules-and-policies/x-automation" target="_blank" rel="noopener noreferrer">X-Automatisierungsregeln</a>
+    <span class="sep">Kein verbundenes Angebot von X Corp.</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  /* Messbalken im Panel: fahren einmal hoch und bleiben stehen.
+     Ruhezustand ist sichtbar — bei reduzierter Bewegung sofort am Ziel. */
+  var ruhig = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var fills = document.querySelectorAll("#panel .gauge .meter > i");
+
+  function setzen() {
+    Array.prototype.forEach.call(fills, function (fill) {
+      var ziel = fill.getAttribute("data-fill") + "%";
+      fill.style.width = ziel;
+      if (parseFloat(fill.getAttribute("data-fill")) >= 90) {
+        fill.parentNode.classList.add("warn");
+      }
+    });
+  }
+
+  if (ruhig) { setzen(); }
+  else { window.requestAnimationFrame(function () { window.setTimeout(setzen, 120); }); }
+
+  /* Befehl markieren statt kopieren: die Zwischenablage ist in der
+     Vorschau oft gesperrt, eine Auswahl funktioniert immer. */
+  var knopf = document.getElementById("copycmd");
+  var label = document.getElementById("copylabel");
+  if (knopf && label) {
+    knopf.addEventListener("click", function () {
+      var bereich = document.createRange();
+      bereich.selectNodeContents(label);
+      var auswahl = window.getSelection();
+      auswahl.removeAllRanges();
+      auswahl.addRange(bereich);
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(knopf.getAttribute("data-cmd")).then(function () {
+          var alt = label.textContent;
+          label.textContent = "kopiert";
+          window.setTimeout(function () { label.textContent = alt; }, 1400);
+        }, function () { /* Auswahl steht bereits */ });
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>
