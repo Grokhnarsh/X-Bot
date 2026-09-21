@@ -5,20 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
 <title>X-Bot — der Bot, der vor dem Limit stehenbleibt</title>
-<meta name="description" content="Selbst gehosteter Automatisierungsbot fuer X: schreibt Beitraege, liked, teilt und reagiert auf Hashtags — mit Probelauf als Standard, harten Limits und Filtern, die das Konto schuetzen. Open Source, Python, MIT.">
+<meta name="description" content="Selbst gehosteter Automatisierungsbot fuer X und Discord: schreibt Beitraege, liked, teilt, reagiert auf Hashtags und auf Schluesselwoerter in Discord-Kanaelen — mit Probelauf als Standard, harten Limits und Filtern, die das Konto schuetzen. Open Source, Python, MIT.">
 <link rel="canonical" href="https://grokhnarsh.github.io/X-Bot/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233D8BFF'/%3E%3Ctext x='16' y='23' font-family='sans-serif' font-size='18' font-weight='bold' fill='%23061019' text-anchor='middle'%3EX%3C/text%3E%3C/svg%3E">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="X-Bot">
 <meta property="og:title" content="X-Bot — der Bot, der vor dem Limit stehenbleibt">
-<meta property="og:description" content="Selbst gehosteter Automatisierungsbot fuer X: schreibt Beitraege, liked, teilt und reagiert auf Hashtags — mit Probelauf als Standard, harten Limits und Filtern, die das Konto schuetzen. Open Source, Python, MIT.">
+<meta property="og:description" content="Selbst gehosteter Automatisierungsbot fuer X und Discord: schreibt Beitraege, liked, teilt, reagiert auf Hashtags und auf Schluesselwoerter in Discord-Kanaelen — mit Probelauf als Standard, harten Limits und Filtern, die das Konto schuetzen. Open Source, Python, MIT.">
 <meta property="og:url" content="https://grokhnarsh.github.io/X-Bot/">
 <meta property="og:image" content="https://grokhnarsh.github.io/X-Bot/dashboard.png">
 <meta property="og:image:alt" content="Die Weboberflaeche von X-Bot mit Tageslimits und Aktionsverlauf.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="X-Bot — der Bot, der vor dem Limit stehenbleibt">
-<meta name="twitter:description" content="Selbst gehosteter Automatisierungsbot fuer X: schreibt Beitraege, liked, teilt und reagiert auf Hashtags — mit Probelauf als Standard, harten Limits und Filtern, die das Konto schuetzen. Open Source, Python, MIT.">
+<meta name="twitter:description" content="Selbst gehosteter Automatisierungsbot fuer X und Discord: schreibt Beitraege, liked, teilt, reagiert auf Hashtags und auf Schluesselwoerter in Discord-Kanaelen — mit Probelauf als Standard, harten Limits und Filtern, die das Konto schuetzen. Open Source, Python, MIT.">
 <meta name="twitter:image" content="https://grokhnarsh.github.io/X-Bot/dashboard.png">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -400,6 +400,7 @@ footer .sep { margin-left: auto; }
     <a class="logo" href="#top"><span class="logo-mark">X</span> X-Bot</a>
     <nav class="topnav">
       <a class="hide-sm" href="#tut">Funktionen</a>
+      <a class="hide-sm" href="#discord">Discord</a>
       <a class="hide-sm" href="#netze">Sicherheit</a>
       <a class="hide-sm" href="#start">Loslegen</a>
       <a class="ghost" href="https://github.com/Grokhnarsh/X-Bot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -417,8 +418,9 @@ footer .sep { margin-left: auto; }
         <h1>Der Bot, der <em>vor</em> dem Limit stehenbleibt.</h1>
         <p class="lead">
           X-Bot schreibt Beiträge, liked, teilt und antwortet auf die Hashtags,
-          die du festlegst. Das Bemerkenswerte ist, was er dabei alles sein
-          lässt — damit dein Konto den Monat übersteht.
+          die du festlegst — und auf Wunsch dasselbe in deinen Discord-Kanälen.
+          Das Bemerkenswerte ist, was er dabei alles sein lässt — damit dein
+          Konto den Monat übersteht.
         </p>
 
         <div class="hero-cta">
@@ -431,10 +433,10 @@ footer .sep { margin-left: auto; }
         </div>
 
         <div class="facts">
-          <span><b>268</b> Tests</span>
+          <span><b>402</b> Tests</span>
           <span><b>86 %</b> Abdeckung</span>
           <span><b>Probelauf</b> als Standard</span>
-          <span><b>Python</b> 3.11+</span>
+          <span><b>2</b> Plattformen</span>
         </div>
       </div>
 
@@ -480,7 +482,7 @@ footer .sep { margin-left: auto; }
   <!-- ============================================================ Was er tut -->
   <section class="band" id="tut">
     <div class="wrap cols">
-      <div class="rail"><p class="eyebrow">01 — Funktionen</p></div>
+      <div class="rail"><p class="eyebrow">01 — Funktionen auf X</p></div>
       <div>
         <h2>Vier Aktionen. Jede mit einer Obergrenze.</h2>
         <p>
@@ -535,10 +537,77 @@ footer .sep { margin-left: auto; }
     </div>
   </section>
 
+  <!-- ============================================================= Discord -->
+  <section class="band" id="discord">
+    <div class="wrap cols">
+      <div class="rail"><p class="eyebrow">02 — Zweite Plattform</p></div>
+      <div>
+        <h2>Derselbe Bot, in deinen Discord-Kanälen.</h2>
+        <p>
+          Optional dazuschaltbar: Der Bot postet in Kanäle und reagiert dort auf
+          Schlüsselwörter — mit einem Emoji oder einer Antwort. Geteilt werden
+          Taktgeber, Textgenerator und Oberfläche. <b style="color:var(--fg)">Getrennt
+          bleiben die Zähler:</b> eine Reaktion in Discord verbraucht kein
+          Like-Kontingent auf X.
+        </p>
+
+        <div class="acts">
+          <div class="act">
+            <span class="idx">01</span>
+            <div>
+              <div class="name">In Kanäle schreiben</div>
+              <p class="desc">Mehrere Zielkanäle, reihum abgearbeitet — nicht immer derselbe.</p>
+            </div>
+            <span class="lim">5 / Tag · 2 / Std.</span>
+            <span class="meter bar"><i style="width:34%"></i></span>
+          </div>
+
+          <div class="act">
+            <span class="idx">02</span>
+            <div>
+              <div class="name">Reagieren</div>
+              <p class="desc">Ein Emoji auf passende Nachrichten. Die unaufdringlichste Art, präsent zu sein.</p>
+            </div>
+            <span class="lim">120 / Tag · 20 / Std.</span>
+            <span class="meter bar"><i style="width:66%"></i></span>
+          </div>
+
+          <div class="act">
+            <span class="idx">03</span>
+            <div>
+              <div class="name">Antworten</div>
+              <p class="desc">Auf die Nachricht bezogen, von Claude verfasst — ohne Ping an die Person.</p>
+            </div>
+            <span class="lim">12 / Tag · 3 / Std.</span>
+            <span class="meter bar"><i style="width:40%"></i></span>
+          </div>
+        </div>
+
+        <pre class="code"><span class="c"># config.yaml</span>
+<span class="k">discord</span>:
+  <span class="k">enabled</span>: <b>true</b>
+  <span class="k">rules</span>:
+    - <span class="k">name</span>: <span class="s">"Python-Hilfe"</span>
+      <span class="k">keywords</span>: [<span class="s">"traceback"</span>, <span class="s">"importerror"</span>]
+      <span class="k">actions</span>: [<span class="s">"react"</span>]
+      <span class="k">emoji</span>: <span class="s">"👀"</span>
+      <span class="k">min_length</span>: <b>40</b>       <span class="c"># kurze Zurufe bleiben liegen</span></pre>
+
+        <p class="caption">
+          Zwei Dinge sind in einem Chat gefährlicher als in einer Zeitleiste, beide
+          sind ab Werk abgesichert: Nachrichten <b style="color:var(--fg)">anderer Bots</b>
+          werden übersprungen — sonst schaukeln sich zwei Bots in Minuten hoch. Und
+          pro Durchlauf rührt der Bot <b style="color:var(--fg)">höchstens eine Nachricht
+          je Person</b> an, statt an jeder Zeile eines Gesprächs zu hängen.
+        </p>
+      </div>
+    </div>
+  </section>
+
   <!-- ====================================================== Was er nicht tut -->
   <section class="band" id="netze">
     <div class="wrap cols">
-      <div class="rail"><p class="eyebrow">02 — Zurückhaltung</p></div>
+      <div class="rail"><p class="eyebrow">03 — Zurückhaltung</p></div>
       <div>
         <h2>Was er nicht tut.</h2>
         <p>
@@ -560,12 +629,16 @@ footer .sep { margin-left: auto; }
           <div class="ref"><span class="x">×</span><span class="r">bereits bewertet</span></div>
           <div class="ref"><span class="x">×</span><span class="r">eigener Beitrag</span></div>
           <div class="ref"><span class="x">×</span><span class="r">Stundenlimit erreicht (12/12)</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">Mira ist ein Bot</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">erwähnt @everyone oder @here</span></div>
+          <div class="ref"><span class="x">×</span><span class="r">Reaktion steht schon dran</span></div>
         </div>
 
         <p class="caption">
-          Dazu: kein Tweet wird zweimal behandelt — auch über Neustarts hinweg,
-          weil jede Aktion in einer lokalen Datenbank steht. Und pro Durchlauf
-          rührt der Bot höchstens einen Beitrag je Person an.
+          Dazu: kein Beitrag wird zweimal behandelt — auch über Neustarts hinweg,
+          weil jede Aktion in einer lokalen Datenbank steht, getrennt nach
+          Plattform. Und pro Durchlauf rührt der Bot höchstens einen Beitrag
+          je Person an.
         </p>
       </div>
     </div>
@@ -574,14 +647,15 @@ footer .sep { margin-left: auto; }
   <!-- ========================================================== Oberfläche -->
   <section class="band" id="ui">
     <div class="wrap cols">
-      <div class="rail"><p class="eyebrow">03 — Bedienung</p></div>
+      <div class="rail"><p class="eyebrow">04 — Bedienung</p></div>
       <div>
         <h2>Alles im Browser. Das Terminal brauchst du einmal.</h2>
         <p>
           <code style="font-family:var(--mono);font-size:13.5px;color:var(--fg)">python -m xbot web</code> —
-          danach läuft die Einrichtung, das Regelwerk, der Umschalter zwischen
-          Probelauf und Echtbetrieb und das Protokoll auf einer Oberfläche, die
-          standardmäßig nur auf <span style="font-family:var(--mono);font-size:13.5px">127.0.0.1</span> lauscht.
+          danach läuft die Einrichtung, das Regelwerk beider Plattformen, der
+          Umschalter zwischen Probelauf und Echtbetrieb und das Protokoll auf
+          einer Oberfläche, die standardmäßig nur auf
+          <span style="font-family:var(--mono);font-size:13.5px">127.0.0.1</span> lauscht.
         </p>
 
         <div class="shot">
@@ -589,14 +663,18 @@ footer .sep { margin-left: auto; }
             <i></i><i></i><i></i>
             <span>127.0.0.1:8080 — Übersicht</span>
           </div>
-          <img src="dashboard.png" width="1600" height="1211"
-               alt="Die Weboberfläche von X-Bot: Steuerung mit Start- und Echtbetrieb-Schalter, Kennzahlen des Tages, Auslastung der Tageslimits als Messbalken und ein Balkendiagramm der Aktionen der letzten 14 Tage.">
+          <img src="dashboard.png" width="1600" height="1468"
+               alt="Die Weboberfläche von X-Bot: Steuerung mit Start- und Echtbetrieb-Schalter sowie eigenen Discord-Schaltflächen, Kennzahlen des Tages getrennt nach X und Discord, Auslastung beider Tageslimits als Messbalken, der Zeitplan und ein Balkendiagramm der Aktionen der letzten 14 Tage.">
         </div>
 
         <div class="featlist">
           <div class="feat">
             <h3>Regeln ohne YAML</h3>
-            <p>Hashtags, Aktionen, Sprachen, Mindestresonanz und Gewichtung als Formular. Wer lieber direkt in der Datei arbeitet, bekommt den rohen Editor daneben — inklusive Prüfung vor dem Speichern.</p>
+            <p>Hashtags für X, Schlüsselwörter für Discord — je Plattform mit den passenden Feldern als Formular. Wer lieber direkt in der Datei arbeitet, bekommt den rohen Editor daneben, inklusive Prüfung vor dem Speichern.</p>
+          </div>
+          <div class="feat">
+            <h3>Zwei Plattformen, ein Blick</h3>
+            <p>Beide Kontingente nebeneinander, jedes mit eigenen Messbalken. Das Protokoll lässt sich nach Plattform filtern, und die Discord-Schaltflächen erscheinen erst, wenn du die Erweiterung einschaltest.</p>
           </div>
           <div class="feat">
             <h3>Der Schalter, der zählt</h3>
@@ -614,7 +692,7 @@ footer .sep { margin-left: auto; }
   <!-- =============================================================== Texte -->
   <section class="band" id="texte">
     <div class="wrap cols">
-      <div class="rail"><p class="eyebrow">04 — Texte</p></div>
+      <div class="rail"><p class="eyebrow">05 — Texte</p></div>
       <div>
         <h2>Claude schreibt. Vorlagen springen ein.</h2>
         <p>
@@ -645,7 +723,7 @@ footer .sep { margin-left: auto; }
   <!-- ============================================================ Loslegen -->
   <section class="band" id="start">
     <div class="wrap cols">
-      <div class="rail"><p class="eyebrow">05 — Loslegen</p></div>
+      <div class="rail"><p class="eyebrow">06 — Loslegen</p></div>
       <div>
         <h2>In drei Schritten zum Probelauf.</h2>
 
@@ -665,7 +743,7 @@ pip install -r requirements-web.txt</pre>
             <span class="num">02</span>
             <div>
               <h3>Einrichten</h3>
-              <p>Konfiguration anlegen, Passwort für die Oberfläche setzen, Server starten. Die X-Zugangsdaten trägst du danach im Browser ein.</p>
+              <p>Konfiguration anlegen, Passwort für die Oberfläche setzen, Server starten. Die Zugangsdaten für X — und, wenn du willst, den Discord-Token — trägst du danach im Browser ein.</p>
               <pre class="code">python -m xbot init
 <span class="c">echo</span> <span class="s">'XBOT_WEB_PASSWORD=ein-langes-passwort'</span> &gt;&gt; .env
 python -m xbot web</pre>
@@ -687,7 +765,7 @@ python -m xbot web</pre>
   <!-- ===================================================== Kleingedrucktes -->
   <section class="band" id="fein">
     <div class="wrap cols">
-      <div class="rail"><p class="eyebrow">06 — Vorher wissen</p></div>
+      <div class="rail"><p class="eyebrow">07 — Vorher wissen</p></div>
       <div>
         <h2>Was dir sonst niemand vorher sagt.</h2>
 
@@ -705,6 +783,10 @@ python -m xbot web</pre>
             <p>Automatisierung ist erlaubt, Spam nicht. Die Voreinstellungen liegen weit unter jeder Schwelle, aber die Verantwortung für das Konto bleibt bei dir. Richte die Bot-Kennzeichnung im Profil ein.</p>
           </div>
           <div class="fine-row">
+            <div class="q">Discord braucht ein Häkchen, das leicht zu übersehen ist</div>
+            <p>Im Developer Portal muss das <b style="color:var(--fg)">MESSAGE CONTENT INTENT</b> eingeschaltet sein. Fehlt es, liefert Discord nur leere Nachrichten — der Bot sieht nichts und reagiert auf nichts. Der Selbsttest sagt dir das im Klartext.</p>
+          </div>
+          <div class="fine-row">
             <div class="q">Antworten sind der heikle Teil</div>
             <p>Automatisierte Antworten an Menschen, die nicht gefragt haben, sind der Bereich mit dem höchsten Risiko. Empfehlung: mit <b style="color:var(--fg)">like</b> starten, eine Woche mitlesen, dann erweitern.</p>
           </div>
@@ -718,9 +800,9 @@ python -m xbot web</pre>
     <div class="wrap">
       <h2>Es liegt alles offen.</h2>
       <p style="font-size:17px;max-width:56ch">
-        Kein Abo, kein Konto bei uns, kein Dienst zwischen dir und der X-API.
-        Der Quelltext steht unter MIT — lies nach, was der Bot in deinem Namen
-        tut, bevor du ihn lässt.
+        Kein Abo, kein Konto bei uns, kein Dienst zwischen dir und den APIs von
+        X und Discord. Der Quelltext steht unter MIT — lies nach, was der Bot in
+        deinem Namen tut, bevor du ihn lässt.
       </p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="https://github.com/Grokhnarsh/X-Bot" target="_blank" rel="noopener noreferrer">
@@ -740,7 +822,7 @@ python -m xbot web</pre>
     <span>X-Bot · MIT-Lizenz</span>
     <a href="https://github.com/Grokhnarsh/X-Bot" target="_blank" rel="noopener noreferrer">Quelltext</a>
     <a href="https://help.x.com/en/rules-and-policies/x-automation" target="_blank" rel="noopener noreferrer">X-Automatisierungsregeln</a>
-    <span class="sep">Kein verbundenes Angebot von X Corp.</span>
+    <span class="sep">Kein verbundenes Angebot von X Corp. oder Discord Inc.</span>
   </div>
 </footer>
 
