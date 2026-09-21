@@ -5,6 +5,7 @@
     xbot preview   Texte erzeugen, ohne zu senden
     xbot post      einen Beitrag veroeffentlichen
     xbot engage    einen Durchlauf Hashtag-Monitoring
+    xbot discord   Discord: posten oder auf Schluesselwoerter reagieren
     xbot run       Dauerbetrieb
     xbot stats     Auswertung
 """
@@ -34,7 +35,8 @@ EXIT_CONFIG = 2
 
 BANNER_LIVE = """
 !!! ECHTBETRIEB !!!
-Der Bot sendet ab jetzt wirklich auf X: Beitraege, Likes, Reposts, Antworten.
+Der Bot sendet ab jetzt wirklich: Beitraege, Likes, Reposts und Antworten auf X,
+Beitraege, Reaktionen und Antworten in Discord.
 Zum Abbrechen: Strg+C
 """
 
@@ -136,23 +138,61 @@ def cmd_post(args: argparse.Namespace) -> int:
         return EXIT_ERROR if report.failed else EXIT_OK
 
 
+def _report_engagement(report, show_skips: int) -> int:
+    """Gemeinsame Ausgabe fuer X- und Discord-Durchlaeufe."""
+    _out(report.describe())
+    skips = report.top_skips(show_skips)
+    if skips:
+        _out("")
+        _out("Haeufigste Gruende fuer Ueberspringen:")
+        for reason, count in skips:
+            _out(f"  {count:3d}x  {reason}")
+    if report.errors:
+        _out("")
+        _out("Fehler:")
+        for error in report.errors[:5]:
+            _out(f"  - {error}")
+    return EXIT_ERROR if (report.errors and not report.total_actions) else EXIT_OK
+
+
 def cmd_engage(args: argparse.Namespace) -> int:
     config = _load(args)
     with Bot(config) as bot:
-        report = bot.engage_once()
+        return _report_engagement(bot.engage_once(), args.show_skips)
+
+
+def cmd_discord_post(args: argparse.Namespace) -> int:
+    config = _load(args)
+    with Bot(config) as bot:
+        if not _discord_bereit(config):
+            return EXIT_CONFIG
+        report = bot.discord_post_once(topic=args.topic, channel=args.channel, force=args.force)
         _out(report.describe())
-        skips = report.top_skips(args.show_skips)
-        if skips:
+        if report.text:
             _out("")
-            _out("Haeufigste Gruende fuer Ueberspringen:")
-            for reason, count in skips:
-                _out(f"  {count:3d}x  {reason}")
-        if report.errors:
-            _out("")
-            _out("Fehler:")
-            for error in report.errors[:5]:
-                _out(f"  - {error}")
-        return EXIT_ERROR if (report.errors and not report.total_actions) else EXIT_OK
+            for line in report.text.splitlines():
+                _out(f"  {line}")
+        # Ein Ueberspringen wegen Zeitfenster oder Limit ist kein Fehlschlag.
+        return EXIT_ERROR if report.failed else EXIT_OK
+
+
+def cmd_discord_engage(args: argparse.Namespace) -> int:
+    config = _load(args)
+    with Bot(config) as bot:
+        if not _discord_bereit(config):
+            return EXIT_CONFIG
+        return _report_engagement(bot.discord_engage_once(), args.show_skips)
+
+
+def _discord_bereit(config: Config) -> bool:
+    """Meldet verstaendlich, was fuer Discord noch fehlt."""
+    if not config.discord.enabled:
+        _out("Discord ist abgeschaltet. Setze in der config.yaml 'discord: enabled: true'.")
+        return False
+    if not config.credentials.discord_bot_token:
+        _out("DISCORD_BOT_TOKEN fehlt in der .env - siehe .env.example.")
+        return False
+    return True
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -180,22 +220,26 @@ def cmd_stats(args: argparse.Namespace) -> int:
         _out(f"Datenbank: {data['database']}")
         _out("")
 
-        summary = data["summary"]
-        _out(f"Aktionen der letzten {data['days']} Tage:")
-        if not summary:
-            _out("  (noch keine)")
-        else:
-            for action in sorted(summary):
-                counts = summary[action]
-                _out(f"  {action:8} echt: {counts['live']:4d}   Probelauf: {counts['dry_run']:4d}")
+        def _block(titel: str, summary: dict, quota: dict) -> None:
+            _out(f"{titel} - Aktionen der letzten {data['days']} Tage:")
+            if not summary:
+                _out("  (noch keine)")
+            else:
+                for action in sorted(summary):
+                    counts = summary[action]
+                    _out(f"  {action:8} echt: {counts['live']:4d}   Probelauf: {counts['dry_run']:4d}")
+            _out("")
+            _out(f"{titel} - aktuelle Auslastung der Limits:")
+            for action, usage in quota.items():
+                _out(
+                    f"  {action:8} Stunde {usage.used_hour:3d}/{usage.limit_hour:<3d}"
+                    f"   Tag {usage.used_day:3d}/{usage.limit_day:<3d}   frei: {usage.remaining}"
+                )
 
-        _out("")
-        _out("Aktuelle Auslastung der Limits:")
-        for action, usage in data["quota"].items():
-            _out(
-                f"  {action:8} Stunde {usage.used_hour:3d}/{usage.limit_hour:<3d}"
-                f"   Tag {usage.used_day:3d}/{usage.limit_day:<3d}   frei: {usage.remaining}"
-            )
+        _block("X", data["summary"], data["quota"])
+        if data["discord_enabled"]:
+            _out("")
+            _block("Discord", data["discord_summary"], data["discord_quota"])
 
         recent = data["recent"]
         if recent:
@@ -273,7 +317,7 @@ def _add_global_flags(parser: argparse.ArgumentParser, *, suppress: bool = False
     flag_default = argparse.SUPPRESS if suppress else False
     parser.add_argument("-c", "--config", default=default, help="Pfad zur config.yaml (Standard: config.yaml)")
     parser.add_argument("--dry-run", action="store_true", default=flag_default, help="nichts senden, nur protokollieren")
-    parser.add_argument("--live", action="store_true", default=flag_default, help="wirklich auf X senden")
+    parser.add_argument("--live", action="store_true", default=flag_default, help="wirklich senden (X und Discord)")
     parser.add_argument("-v", "--verbose", action="store_true", default=flag_default, help="ausfuehrliche Ausgabe")
     parser.add_argument("-q", "--quiet", action="store_true", default=flag_default, help="keine Protokollausgabe auf der Konsole")
 
@@ -289,6 +333,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  xbot doctor                  Einrichtung pruefen\n"
             "  xbot preview -n 5            fuenf Textvorschlaege ansehen\n"
             "  xbot engage                  einmal auf Hashtags reagieren (Probelauf)\n"
+            "  xbot discord engage          einmal auf Discord-Kanaele reagieren\n"
             "  xbot run --live              Dauerbetrieb, sendet wirklich\n"
             "  xbot web                     Weboberflaeche auf http://127.0.0.1:8080\n"
         ),
@@ -324,6 +369,29 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("engage", parents=[common], help="einmal auf die konfigurierten Hashtags reagieren")
     p.add_argument("--show-skips", type=int, default=8, help="wie viele Ueberspringungsgruende angezeigt werden")
     p.set_defaults(func=cmd_engage)
+
+    p = sub.add_parser(
+        "discord",
+        parents=[common],
+        help="Discord: einen Beitrag senden oder auf Schluesselwoerter reagieren",
+    )
+    discord_sub = p.add_subparsers(dest="discord_command", required=True, metavar="AKTION")
+
+    d = discord_sub.add_parser("post", parents=[common], help="einen Beitrag in einen Kanal senden")
+    d.add_argument("--topic", default=None, help="Thema vorgeben")
+    d.add_argument("--channel", default=None, help="Kanal-ID (sonst der naechste der Reihe nach)")
+    d.add_argument(
+        "--force",
+        action="store_true",
+        help="Zeitfenster und discord.posting.enabled ignorieren (Limits gelten weiter)",
+    )
+    d.set_defaults(func=cmd_discord_post)
+
+    d = discord_sub.add_parser(
+        "engage", parents=[common], help="einmal auf die beobachteten Kanaele reagieren"
+    )
+    d.add_argument("--show-skips", type=int, default=8, help="wie viele Ueberspringungsgruende angezeigt werden")
+    d.set_defaults(func=cmd_discord_engage)
 
     p = sub.add_parser("run", parents=[common], help="Dauerbetrieb mit Taktgeber")
     p.add_argument("--max-cycles", type=int, default=None, help="nach so vielen Laeufen beenden (fuer Tests)")

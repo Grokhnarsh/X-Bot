@@ -16,10 +16,10 @@ from flask import (
 
 from ...content.templates import TemplateLibrary
 from ...errors import ConfigError, XBotError
-from ...quota import ACTIONS
-from ...state import Store, from_iso
+from ...quota import ACTIONS, DISCORD_ACTIONS
+from ...state import PLATFORMS, Store, from_iso
 from ..auth import client_key, is_logged_in, log_in, log_out, login_required, throttle, verify_password
-from ..forms import parse_form, parse_rule_form
+from ..forms import parse_discord_rule_form, parse_form, parse_rule_form
 from ..settings_io import CLEAR, ENV_FIELDS, _atomic_write, preserve_trailing_comment
 from ..support import (
     config_file,
@@ -39,6 +39,12 @@ ACTION_LABELS = {
     "post": "Beitrag",
     "like": "Like",
     "repost": "Repost",
+    "reply": "Antwort",
+}
+
+DISCORD_ACTION_LABELS = {
+    "post": "Beitrag",
+    "react": "Reaktion",
     "reply": "Antwort",
 }
 
@@ -65,6 +71,8 @@ def _globals():
     return {
         "action_labels": ACTION_LABELS,
         "actions": ACTIONS,
+        "discord_action_labels": DISCORD_ACTION_LABELS,
+        "discord_actions": DISCORD_ACTIONS,
         "humanize_delta": humanize_delta,
         "logged_in": is_logged_in(),
         "nav_state": state,
@@ -149,37 +157,75 @@ def rules():
         page="rules",
         config=config,
         rules=list(enumerate(config.rules)),
+        discord_rules=list(enumerate(config.discord.rules)),
     )
+
+
+def _rule_list(tree, pfad: tuple[str, ...]):
+    """Die Regelliste im YAML-Baum - bei Bedarf angelegt.
+
+    ``pfad`` ist ``("rules",)`` fuer X und ``("discord", "rules")`` fuer
+    Discord. Beide Seiten teilen sich dadurch Speichern und Loeschen samt
+    Kommentarerhalt.
+    """
+    zweig = tree
+    for schluessel in pfad[:-1]:
+        unter = zweig.get(schluessel)
+        if unter is None:
+            unter = {}
+            zweig[schluessel] = unter
+        zweig = unter
+    liste = zweig.get(pfad[-1])
+    if liste is None:
+        liste = []
+        zweig[pfad[-1]] = liste
+    return liste
+
+
+def _save_rule(pfad: tuple[str, ...], rule: dict) -> str:
+    index_raw = request.form.get("index", "").strip()
+    file = config_file()
+    tree = file.load_tree()
+    existing = _rule_list(tree, pfad)
+
+    with preserve_trailing_comment(existing):
+        if index_raw == "":
+            existing.append(rule)
+            message = f"Regel '{rule['name']}' angelegt."
+        else:
+            index = int(index_raw)
+            if not 0 <= index < len(existing):
+                raise ConfigError("Diese Regel gibt es nicht mehr.")
+            existing[index] = rule
+            message = f"Regel '{rule['name']}' gespeichert."
+
+    config = file.save_tree(tree)
+    runner().set_config(config)
+    runner().reload()
+    return message
+
+
+def _delete_rule(pfad: tuple[str, ...]) -> str:
+    index = int(request.form.get("index", "-1"))
+    file = config_file()
+    tree = file.load_tree()
+    existing = _rule_list(tree, pfad)
+    if not 0 <= index < len(existing):
+        raise ConfigError("Diese Regel gibt es nicht mehr.")
+    name = str(existing[index].get("name", "Regel"))
+    with preserve_trailing_comment(existing):
+        del existing[index]
+    config = file.save_tree(tree)
+    runner().set_config(config)
+    runner().reload()
+    return f"Regel '{name}' gelöscht."
 
 
 @bp.post("/rules/save")
 @login_required
 def rules_save():
-    index_raw = request.form.get("index", "").strip()
     try:
-        rule = parse_rule_form(request.form)
-        file = config_file()
-        tree = file.load_tree()
-        existing = tree.get("rules")
-        if existing is None:
-            existing = []
-            tree["rules"] = existing
-
-        with preserve_trailing_comment(existing):
-            if index_raw == "":
-                existing.append(rule)
-                message = f"Regel '{rule['name']}' angelegt."
-            else:
-                index = int(index_raw)
-                if not 0 <= index < len(existing):
-                    raise ConfigError("Diese Regel gibt es nicht mehr.")
-                existing[index] = rule
-                message = f"Regel '{rule['name']}' gespeichert."
-
-        config = file.save_tree(tree)
-        runner().set_config(config)
-        runner().reload()
-        flash(message, "ok")
+        flash(_save_rule(("rules",), parse_rule_form(request.form)), "ok")
     except (ConfigError, ValueError) as exc:
         flash(str(exc), "error")
     return redirect(url_for("pages.rules"))
@@ -189,19 +235,27 @@ def rules_save():
 @login_required
 def rules_delete():
     try:
-        index = int(request.form.get("index", "-1"))
-        file = config_file()
-        tree = file.load_tree()
-        existing = tree.get("rules") or []
-        if not 0 <= index < len(existing):
-            raise ConfigError("Diese Regel gibt es nicht mehr.")
-        name = str(existing[index].get("name", "Regel"))
-        with preserve_trailing_comment(existing):
-            del existing[index]
-        config = file.save_tree(tree)
-        runner().set_config(config)
-        runner().reload()
-        flash(f"Regel '{name}' gelöscht.", "ok")
+        flash(_delete_rule(("rules",)), "ok")
+    except (ConfigError, ValueError) as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("pages.rules"))
+
+
+@bp.post("/rules/discord/save")
+@login_required
+def discord_rules_save():
+    try:
+        flash(_save_rule(("discord", "rules"), parse_discord_rule_form(request.form)), "ok")
+    except (ConfigError, ValueError) as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("pages.rules"))
+
+
+@bp.post("/rules/discord/delete")
+@login_required
+def discord_rules_delete():
+    try:
+        flash(_delete_rule(("discord", "rules")), "ok")
     except (ConfigError, ValueError) as exc:
         flash(str(exc), "error")
     return redirect(url_for("pages.rules"))
@@ -312,9 +366,16 @@ def content_save():
 @login_required
 def activity():
     config = current_config()
+    platform = request.args.get("platform", "").strip() or None
+    if platform and platform not in PLATFORMS:
+        platform = None
+
     action = request.args.get("action", "").strip() or None
-    if action and action not in ACTIONS:
+    # Die Aktionsnamen der beiden Plattformen ueberschneiden sich nur teilweise.
+    bekannte_aktionen = set(ACTIONS) | set(DISCORD_ACTIONS)
+    if action and action not in bekannte_aktionen:
         action = None
+
     page_number = max(1, int(request.args.get("page", "1") or 1))
     per_page = 40
     include_dry = request.args.get("dry", "1") != "0"
@@ -322,12 +383,14 @@ def activity():
     with Store(config.storage.database) as store:
         rows, total = store.list_actions(
             action=action,
+            platform=platform,
             include_dry_run=include_dry,
             limit=per_page,
             offset=(page_number - 1) * per_page,
         )
         entries = [
             {
+                "platform": row["platform"],
                 "action": row["action"],
                 "target_id": row["target_id"],
                 "target_author": row["target_author"],
@@ -348,6 +411,9 @@ def activity():
         page_number=page_number,
         pages=max(1, -(-total // per_page)),
         filter_action=action or "",
+        filter_platform=platform or "",
+        # Filtert man nach einer Plattform, sollen nur deren Aktionen zur Wahl stehen.
+        action_choices=DISCORD_ACTIONS if platform == "discord" else ACTIONS,
         include_dry=include_dry,
     )
 

@@ -31,9 +31,9 @@ from typing import Any, Callable
 from ..bot import Bot
 from ..config import Config, load_config
 from ..errors import XBotError
-from ..quota import ACTIONS, QuotaGuard
+from ..quota import ACTIONS, DISCORD_ACTIONS, QuotaGuard
 from ..scheduler import Job
-from ..state import Store, from_iso, utcnow
+from ..state import PLATFORM_DISCORD, PLATFORM_X, Store, from_iso, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +301,8 @@ class BotRunner:
         handlers: dict[str, Callable[[Task], None]] = {
             "post": self._task_post,
             "engage": self._task_engage,
+            "discord_post": self._task_discord_post,
+            "discord_engage": self._task_discord_engage,
             "preview": self._task_preview,
             "doctor": self._task_doctor,
             "reload": self._task_reload,
@@ -338,6 +340,30 @@ class BotRunner:
 
     def _task_engage(self, task: Task) -> None:
         report = self._require_bot().engage_once()
+        detail = [f"{count}x {reason}" for reason, count in report.top_skips(6)]
+        detail += [f"Fehler: {error}" for error in report.errors[:3]]
+        self._finish(
+            task,
+            ok=not (report.errors and not report.total_actions),
+            summary=report.describe(),
+            detail=detail,
+        )
+
+    def _task_discord_post(self, task: Task) -> None:
+        bot = self._require_bot()
+        if not bot.config.discord.enabled:
+            self._finish(task, ok=False, summary="Discord ist abgeschaltet.")
+            return
+        report = bot.discord_post_once(force=True)
+        detail = [line for line in report.text.splitlines() if line.strip()] if report.text else []
+        self._finish(task, ok=not report.failed, summary=report.describe(), detail=detail)
+
+    def _task_discord_engage(self, task: Task) -> None:
+        bot = self._require_bot()
+        if not bot.config.discord.enabled:
+            self._finish(task, ok=False, summary="Discord ist abgeschaltet.")
+            return
+        report = bot.discord_engage_once()
         detail = [f"{count}x {reason}" for reason, count in report.top_skips(6)]
         detail += [f"Fehler: {error}" for error in report.errors[:3]]
         self._finish(
@@ -408,17 +434,26 @@ class BotRunner:
             "jobs": jobs,
             "error": error,
             "started_at": self._started_at.isoformat() if self._started_at else None,
+            "discord": {
+                "enabled": config.discord.enabled,
+                "token_ok": bool(config.credentials.discord_bot_token),
+                "posting_enabled": config.discord.posting.enabled,
+                "engagement_enabled": config.discord.engagement.enabled,
+                "rules": len(config.discord.rules),
+                "keywords": len(config.discord.watched_keywords),
+                "watch_channels": len(config.discord.all_watch_channels),
+                "post_channels": len(config.discord.posting.channels),
+            },
         }
 
     def snapshot(self, *, history_days: int = 14, recent: int = 12) -> dict[str, Any]:
         """Zähler, Auslastung und Protokoll - mit eigener Datenbankverbindung."""
         config = self.config
         now = utcnow()
-        with Store(config.storage.database) as store:
-            guard = QuotaGuard(
-                config.engagement.limits, store, config.bot.tzinfo, dry_run=config.bot.dry_run
-            )
-            quota = {
+        today_start = _local_midnight(now, config)
+
+        def _quota(guard: QuotaGuard) -> dict[str, Any]:
+            return {
                 action: {
                     "used_hour": usage.used_hour,
                     "limit_hour": usage.limit_hour,
@@ -429,15 +464,46 @@ class BotRunner:
                 }
                 for action, usage in guard.snapshot(now).items()
             }
-            today_start = _local_midnight(now, config)
+
+        with Store(config.storage.database) as store:
+            quota = _quota(
+                QuotaGuard(
+                    config.engagement.limits, store, config.bot.tzinfo, dry_run=config.bot.dry_run
+                )
+            )
             today = {
-                action: store.count_actions(action, today_start, include_dry_run=config.bot.dry_run)
+                action: store.count_actions(
+                    action, today_start, platform=PLATFORM_X, include_dry_run=config.bot.dry_run
+                )
                 for action in ACTIONS
             }
-            week = store.summary(now - timedelta(days=7))
+            week = store.summary(now - timedelta(days=7), platform=PLATFORM_X)
+
+            # Discord wird getrennt gezaehlt - eine Reaktion dort ist kein Like hier.
+            discord_quota = _quota(
+                QuotaGuard(
+                    config.discord.engagement.limits,
+                    store,
+                    config.bot.tzinfo,
+                    dry_run=config.bot.dry_run,
+                    platform=PLATFORM_DISCORD,
+                )
+            )
+            discord_today = {
+                action: store.count_actions(
+                    action,
+                    today_start,
+                    platform=PLATFORM_DISCORD,
+                    include_dry_run=config.bot.dry_run,
+                )
+                for action in DISCORD_ACTIONS
+            }
+            discord_week = store.summary(now - timedelta(days=7), platform=PLATFORM_DISCORD)
+
             rows = [
                 {
                     "action": row["action"],
+                    "platform": row["platform"],
                     "target_id": row["target_id"],
                     "target_author": row["target_author"],
                     "rule_name": row["rule_name"],
@@ -454,6 +520,12 @@ class BotRunner:
             "today": today,
             "today_total": sum(today.values()),
             "week": week,
+            "discord": {
+                "quota": discord_quota,
+                "today": discord_today,
+                "today_total": sum(discord_today.values()),
+                "week": discord_week,
+            },
             "recent": rows,
             "history": history,
         }

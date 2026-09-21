@@ -20,10 +20,10 @@ import random
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from ..config import Config, Rule
+from ..config import Config, DiscordRule, Rule
 from ..errors import ContentError
 from ..models import Tweet
-from ..state import Store
+from ..state import PLATFORM_DISCORD, PLATFORM_X, Store
 from . import prompts
 from .templates import TemplateLibrary
 from .text import is_duplicate, sanitize, truncate, tweet_length
@@ -142,6 +142,63 @@ class ContentGenerator:
         # zurueckhaltender, allgemeiner Text.
         return self._from_templates("replies", history, kind="reply")
 
+    # -- Discord ------------------------------------------------------------
+    # Eigene Methoden statt eines Plattform-Schalters: Discord hat andere
+    # Laengen, keine Hashtags und einen anderen Tonfall. Der Verlauf ist
+    # ebenfalls getrennt - sonst haelt der Bot einen Discord-Beitrag fuer
+    # eine Wiederholung seines X-Beitrags und schweigt.
+    def generate_discord_post(self, *, topic: str | None = None) -> GeneratedText:
+        cfg = self.config.content
+        max_chars = self.config.discord.max_chars
+        history = self._history(("post",), cfg.history_lookback, platform=PLATFORM_DISCORD)
+        chosen_topic = topic or self._pick_topic()
+
+        system = prompts.system_prompt_discord_post(
+            persona=self.config.bot.persona,
+            language=self.config.bot.language,
+            max_chars=max_chars,
+        )
+
+        def build_user(attempt: int) -> str:
+            return prompts.user_prompt_post(topic=chosen_topic, recent=history[:8])
+
+        result = self._try_ai(system, build_user, history, kind="post", max_chars=max_chars)
+        if result is not None:
+            return result
+
+        return self._from_templates("posts", history, kind="post", max_chars=max_chars)
+
+    def generate_discord_reply(self, message, rule: DiscordRule | None = None) -> GeneratedText:
+        cfg = self.config.content
+        max_chars = self.config.discord.max_chars
+        history = self._history(("reply",), cfg.history_lookback, platform=PLATFORM_DISCORD)
+
+        system = prompts.system_prompt_discord_reply(
+            persona=self.config.bot.persona,
+            language=self.config.bot.language,
+            max_chars=max_chars,
+            instruction=rule.reply_instruction if rule else "",
+        )
+
+        def build_user(attempt: int) -> str:
+            return prompts.user_prompt_discord_reply(
+                message_text=message.content,
+                author=message.author.label,
+                recent=history[:5],
+            )
+
+        result = self._try_ai(system, build_user, history, kind="reply", max_chars=max_chars)
+        if result is not None:
+            return result
+
+        if self.config.content.provider == "ai":
+            raise ContentError(
+                "Antwort konnte nicht erzeugt werden und content.provider ist auf 'ai' gesetzt."
+            )
+        # Vorlagen koennen die fremde Nachricht nicht lesen - deshalb nur ein
+        # zurueckhaltender, allgemeiner Text.
+        return self._from_templates("replies", history, kind="reply", max_chars=max_chars)
+
     # -- KI-Weg -------------------------------------------------------------
     def _try_ai(
         self,
@@ -150,6 +207,7 @@ class ContentGenerator:
         history: Sequence[str],
         *,
         kind: str,
+        max_chars: int | None = None,
     ) -> GeneratedText | None:
         if not self.ai_configured:
             if self.config.content.provider == "ai":
@@ -170,7 +228,7 @@ class ContentGenerator:
                     raise
                 return None
 
-            text = self._finalise(raw)
+            text = self._finalise(raw, max_chars)
             if not text:
                 logger.debug("KI lieferte leeren Text (Versuch %d)", attempt)
                 continue
@@ -240,7 +298,14 @@ class ContentGenerator:
         return "\n".join(parts).strip()
 
     # -- Vorlagenweg --------------------------------------------------------
-    def _from_templates(self, kind_key: str, history: Sequence[str], *, kind: str) -> GeneratedText:
+    def _from_templates(
+        self,
+        kind_key: str,
+        history: Sequence[str],
+        *,
+        kind: str,
+        max_chars: int | None = None,
+    ) -> GeneratedText:
         if self.config.content.provider == "ai":
             raise ContentError("content.provider ist 'ai' - kein Rueckfall auf Vorlagen erlaubt.")
 
@@ -255,7 +320,7 @@ class ContentGenerator:
         self.rng.shuffle(order)
 
         for position, index in enumerate(order, start=1):
-            text = self._finalise(library.render_index(kind_key, index, rng=self.rng))
+            text = self._finalise(library.render_index(kind_key, index, rng=self.rng), max_chars)
             if not text:
                 continue
             if is_duplicate(text, history, self.config.content.similarity_threshold):
@@ -269,13 +334,15 @@ class ContentGenerator:
         )
 
     # -- Hilfsfunktionen ----------------------------------------------------
-    def _finalise(self, raw: str) -> str:
-        return truncate(sanitize(raw), self.config.content.max_chars)
+    def _finalise(self, raw: str, max_chars: int | None = None) -> str:
+        return truncate(sanitize(raw), max_chars or self.config.content.max_chars)
 
-    def _history(self, actions: Sequence[str], limit: int) -> list[str]:
+    def _history(
+        self, actions: Sequence[str], limit: int, *, platform: str = PLATFORM_X
+    ) -> list[str]:
         if self.store is None or limit <= 0:
             return []
-        return self.store.recent_texts(actions, limit)
+        return self.store.recent_texts(actions, limit, platform=platform)
 
     def _pick_topic(self) -> str:
         topics = self.config.bot.topics

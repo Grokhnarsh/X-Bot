@@ -16,11 +16,18 @@ from .client import XClient
 from .config import Config
 from .content import ContentGenerator, GeneratedText
 from .content.templates import TemplateLibrary
+from .discord import (
+    DiscordClient,
+    DiscordEngagementEngine,
+    DiscordEngagementReport,
+    DiscordPoster,
+    DiscordPostReport,
+)
 from .errors import ContentError, CredentialsError, XBotError
 from .models import Author
 from .quota import QuotaGuard
 from .scheduler import Job, Scheduler
-from .state import Store, utcnow
+from .state import PLATFORM_DISCORD, PLATFORM_X, Store, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +63,28 @@ class Bot:
         self.poster = Poster(config, self.client, self.store, self.quota, self.generator)
         self.engine = EngagementEngine(config, self.client, self.store, self.quota, self.generator)
 
+        # Discord bekommt einen eigenen Waechter: Reaktionen dort duerfen
+        # Likes auf X nicht ausbremsen und umgekehrt.
+        self.discord_client = DiscordClient(
+            config.credentials.discord_bot_token, dry_run=config.bot.dry_run
+        )
+        self.discord_quota = QuotaGuard(
+            config.discord.engagement.limits,
+            self.store,
+            config.bot.tzinfo,
+            dry_run=config.bot.dry_run,
+            platform=PLATFORM_DISCORD,
+        )
+        self.discord_poster = DiscordPoster(
+            config, self.discord_client, self.store, self.discord_quota, self.generator
+        )
+        self.discord_engine = DiscordEngagementEngine(
+            config, self.discord_client, self.store, self.discord_quota, self.generator
+        )
+
     # -- Lebenszyklus -------------------------------------------------------
     def close(self) -> None:
+        self.discord_client.close()
         self.store.close()
 
     def __enter__(self) -> "Bot":
@@ -77,6 +104,19 @@ class Bot:
     def engage_once(self) -> EngagementReport:
         return self.engine.run_cycle()
 
+    def discord_post_once(
+        self, *, topic: str | None = None, channel: str | None = None, force: bool = False
+    ) -> DiscordPostReport:
+        return self.discord_poster.run(topic=topic, channel=channel, force=force)
+
+    def discord_engage_once(self) -> DiscordEngagementReport:
+        return self.discord_engine.run_cycle()
+
+    @property
+    def discord_active(self) -> bool:
+        """Ist Discord eingeschaltet und mit einem Token versehen?"""
+        return self.config.discord.enabled and bool(self.config.credentials.discord_bot_token)
+
     def preview(self, *, count: int = 3, topic: str | None = None) -> Iterator[GeneratedText]:
         """Erzeugt Texte, ohne etwas zu senden oder zu speichern."""
         for _ in range(max(1, count)):
@@ -86,7 +126,8 @@ class Bot:
     def build_jobs(self) -> list[Job]:
         posting = self.config.posting
         engagement = self.config.engagement
-        return [
+        discord = self.config.discord
+        jobs = [
             Job(
                 name="Beitrag veroeffentlichen",
                 interval_minutes=posting.interval_minutes,
@@ -102,6 +143,26 @@ class Bot:
                 run=self._engagement_job,
             ),
         ]
+        if discord.enabled:
+            jobs.extend(
+                [
+                    Job(
+                        name="Discord-Beitrag veroeffentlichen",
+                        interval_minutes=discord.posting.interval_minutes,
+                        jitter_minutes=discord.posting.jitter_minutes,
+                        enabled=discord.posting.enabled,
+                        run=self._discord_posting_job,
+                    ),
+                    Job(
+                        name="Discord-Kanaele beobachten",
+                        interval_minutes=discord.engagement.interval_minutes,
+                        jitter_minutes=discord.engagement.jitter_minutes,
+                        enabled=discord.engagement.enabled,
+                        run=self._discord_engagement_job,
+                    ),
+                ]
+            )
+        return jobs
 
     def _posting_job(self) -> None:
         report = self.post_once()
@@ -118,6 +179,21 @@ class Bot:
         for error in report.errors[:3]:
             logger.warning("  Fehler: %s", error)
 
+    def _discord_posting_job(self) -> None:
+        report = self.discord_post_once()
+        if report.posted:
+            logger.info(report.describe())
+        else:
+            logger.info("Kein Discord-Beitrag: %s", report.reason)
+
+    def _discord_engagement_job(self) -> None:
+        report = self.discord_engage_once()
+        logger.info("Discord: %s", report.describe())
+        for reason, count in report.top_skips():
+            logger.debug("  uebersprungen %dx: %s", count, reason)
+        for error in report.errors[:3]:
+            logger.warning("  Fehler: %s", error)
+
     def run(self, *, initial_run: bool = True, max_cycles: int | None = None) -> None:
         mode = "PROBELAUF - es wird nichts gesendet" if self.dry_run else "ECHTBETRIEB"
         logger.info("X-Bot startet. Modus: %s", mode)
@@ -128,6 +204,13 @@ class Bot:
             except CredentialsError as exc:
                 logger.error("Anmeldung fehlgeschlagen: %s", exc)
                 raise
+            if self.config.discord.enabled:
+                try:
+                    bot_konto = self.discord_client.verify()
+                    logger.info("Discord: angemeldet als %s", bot_konto.label)
+                except CredentialsError as exc:
+                    logger.error("Discord-Anmeldung fehlgeschlagen: %s", exc)
+                    raise
         Scheduler(self.build_jobs()).run(initial_run=initial_run, max_cycles=max_cycles)
 
     # -- Auswertung ---------------------------------------------------------
@@ -136,8 +219,11 @@ class Bot:
         return {
             "dry_run": self.dry_run,
             "days": days,
-            "summary": self.store.summary(since),
+            "summary": self.store.summary(since, platform=PLATFORM_X),
             "quota": self.quota.snapshot(),
+            "discord_enabled": self.config.discord.enabled,
+            "discord_summary": self.store.summary(since, platform=PLATFORM_DISCORD),
+            "discord_quota": self.discord_quota.snapshot(),
             "recent": self.store.recent_actions(10),
             "database": str(self.store.path),
         }
@@ -246,6 +332,73 @@ class Bot:
             )
         )
 
+        checks.extend(self._discord_checks())
+        return checks
+
+    def _discord_checks(self) -> list[Check]:
+        """Pruefpunkte der Discord-Erweiterung.
+
+        Ist Discord abgeschaltet, bleibt es bei einer Zeile - der Selbsttest
+        soll nicht an einer Erweiterung scheitern, die niemand nutzt.
+        """
+        cfg = self.config
+        discord = cfg.discord
+        if not discord.enabled:
+            return [Check("Discord", True, "abgeschaltet (discord.enabled: false)")]
+
+        checks: list[Check] = []
+        token = cfg.credentials.discord_bot_token
+        if not token:
+            checks.append(
+                Check(
+                    "Discord-Zugangsdaten",
+                    False,
+                    "discord.enabled ist true, aber DISCORD_BOT_TOKEN fehlt in der .env",
+                )
+            )
+        else:
+            checks.append(Check("Discord-Zugangsdaten", True, "DISCORD_BOT_TOKEN vorhanden"))
+            try:
+                konto = self.discord_client.verify()
+                checks.append(Check("Discord-Verbindung", True, f"angemeldet als {konto.label}"))
+            except (CredentialsError, XBotError) as exc:
+                checks.append(Check("Discord-Verbindung", False, str(exc)))
+
+        if discord.rules:
+            actions = sorted({a for rule in discord.rules for a in rule.actions})
+            checks.append(
+                Check(
+                    "Discord-Regeln",
+                    True,
+                    f"{len(discord.rules)} Regeln, {len(discord.watched_keywords)} Schluesselwoerter, "
+                    f"Aktionen: {', '.join(actions)}",
+                )
+            )
+        else:
+            checks.append(
+                Check("Discord-Regeln", not discord.engagement.enabled, "keine Discord-Regel definiert")
+            )
+
+        beobachtet = discord.all_watch_channels
+        checks.append(
+            Check(
+                "Discord-Kanaele",
+                bool(beobachtet) or not discord.engagement.enabled,
+                f"{len(beobachtet)} beobachtet, {len(discord.posting.channels)} zum Posten"
+                if beobachtet or discord.posting.channels
+                else "keine Kanal-ID eingetragen",
+            )
+        )
+
+        dl = discord.engagement.limits
+        checks.append(
+            Check(
+                "Discord-Limits",
+                True,
+                f"pro Tag: {dl.post_per_day} Beitraege, {dl.react_per_day} Reaktionen, "
+                f"{dl.reply_per_day} Antworten; Mindestabstand {dl.min_seconds_between_actions}s",
+            )
+        )
         return checks
 
     def check_ai(self) -> Check:

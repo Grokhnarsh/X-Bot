@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Regeln - X-Bot{% endblock %}
-{% block heading %}Hashtag-Regeln{% endblock %}
-{% block subheading %}Worauf der Bot reagiert und wie. Die erste passende Regel gewinnt.{% endblock %}
+{% block heading %}Regeln{% endblock %}
+{% block subheading %}Worauf der Bot reagiert und wie. Je Plattform gewinnt die erste passende Regel.{% endblock %}
 
 {# Formularfelder einer Regel - einmal definiert, für Bearbeiten und Anlegen. #}
 {% macro rule_fields(rule=none) %}
@@ -71,7 +71,79 @@
   </div>
 {% endmacro %}
 
+{# Formularfelder einer Discord-Regel. #}
+{% macro discord_rule_fields(rule=none) %}
+  <div class="field">
+    <label>Name</label>
+    <input type="text" name="str:rule.name" value="{{ rule.name if rule else '' }}" required>
+  </div>
+
+  <div class="field">
+    <label>Schlüsselwörter</label>
+    <div class="desc">Durch Komma getrennt. Es wird ohne Rücksicht auf Groß- und Kleinschreibung gesucht.</div>
+    <input type="text" name="csv:rule.keywords"
+           value="{{ rule.keywords|join(', ') if rule else '' }}"
+           placeholder="python, deployment" required>
+  </div>
+
+  <div class="inline" style="margin-bottom:14px">
+    <div class="field">
+      <label>Treffer</label>
+      <select name="str:rule.match">
+        <option value="any" {% if not rule or rule.match == 'any' %}selected{% endif %}>ein Wort genügt</option>
+        <option value="all" {% if rule and rule.match == 'all' %}selected{% endif %}>alle Wörter nötig</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Emoji</label>
+      <div class="desc" style="margin:0">für die Reaktion</div>
+      <input type="text" name="str:rule.emoji" value="{{ rule.emoji if rule else '👀' }}" maxlength="40">
+    </div>
+    <div class="field">
+      <label>Mindestlänge</label>
+      <div class="desc" style="margin:0">Zeichen ohne Links</div>
+      <input type="number" name="int:rule.min_length" min="0" value="{{ rule.min_length if rule else 0 }}">
+    </div>
+    <div class="field">
+      <label>Gewicht</label>
+      <div class="desc" style="margin:0">höher = zuerst bedient</div>
+      <input type="number" name="float:rule.weight" min="0" step="0.1" value="{{ rule.weight if rule else 1.0 }}">
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Aktionen</label>
+    <input type="hidden" name="strlist:rule.actions" value="">
+    <div class="check-row">
+      {% for value, label, note in [
+          ('react', 'Reagieren', 'setzt das Emoji, unaufdringlich'),
+          ('reply', 'Antworten', 'nur mit aktiver KI sinnvoll')] %}
+        <label class="check">
+          <input type="checkbox" name="strlist:rule.actions" value="{{ value }}"
+                 {% if rule and value in rule.actions %}checked{% endif %}>
+          <span>{{ label }}<br><span class="muted" style="font-size:12px">{{ note }}</span></span>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Nur diese Kanäle</label>
+    <div class="desc">Kanal-IDs durch Komma getrennt. Leer = alle beobachteten Kanäle.</div>
+    <input type="text" name="csv:rule.channels" value="{{ rule.channels|join(', ') if rule else '' }}"
+           placeholder="123456789012345678">
+  </div>
+
+  <div class="field">
+    <label>Zusatzhinweis für Antworten</label>
+    <div class="desc">Geht direkt in den KI-Prompt dieser Regel. Nur bei der Aktion &bdquo;Antworten&ldquo; wirksam.</div>
+    <textarea name="text:rule.reply_instruction" rows="2">{{ rule.reply_instruction if rule else '' }}</textarea>
+  </div>
+{% endmacro %}
+
 {% block content %}
+
+<h2 class="section-title">X &middot; Hashtags</h2>
 
 {% if not config.engagement.enabled %}
   <div class="note warn" style="margin-bottom:16px">
@@ -139,6 +211,86 @@
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <input type="hidden" name="index" value="">
         {{ rule_fields(none) }}
+        <div class="btn-row">
+          <button type="submit" class="btn primary">Regel anlegen</button>
+        </div>
+      </form>
+    </div>
+  </details>
+</div>
+
+<h2 class="section-title" style="margin-top:34px">Discord &middot; Schlüsselwörter</h2>
+
+{% if not config.discord.enabled %}
+  <div class="note warn" style="margin-bottom:16px">
+    <span class="mark">!</span>
+    <span>Die Discord-Erweiterung ist abgeschaltet - die Regeln unten laufen nicht.
+      <a href="{{ url_for('pages.settings') }}">In den Einstellungen einschalten</a>.</span>
+  </div>
+{% elif not config.discord.engagement.enabled %}
+  <div class="note warn" style="margin-bottom:16px">
+    <span class="mark">!</span>
+    <span>Das Beobachten der Discord-Kanäle ist abgeschaltet - die Regeln unten laufen nicht.
+      <a href="{{ url_for('pages.settings') }}">In den Einstellungen einschalten</a>.</span>
+  </div>
+{% endif %}
+
+{% for index, rule in discord_rules %}
+  <div class="rule-card">
+    <div class="rule-head">
+      <h3>{{ rule.name }}</h3>
+      <div class="pill-row">
+        {% if 'react' in rule.actions %}<span class="pill accent">{{ rule.emoji }} Reaktion</span>{% endif %}
+        {% if 'reply' in rule.actions %}<span class="pill accent">Antwort</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="rule-tags">
+      {% for word in rule.keywords %}<span class="tag">{{ word }}</span>{% endfor %}
+    </div>
+
+    <div class="rule-meta">
+      {{ 'ein Wort genügt' if rule.match == 'any' else 'alle Wörter nötig' }}
+      {%- if rule.min_length %} &middot; ab {{ rule.min_length }} Zeichen{% endif %}
+      &middot; Gewicht {{ rule.weight }}
+      &middot; {{ rule.channels|length ~ ' eigene(r) Kanal/Kanäle' if rule.channels else 'alle beobachteten Kanäle' }}
+    </div>
+
+    <details class="editor">
+      <summary>Bearbeiten</summary>
+      <div>
+        <form method="post" action="{{ url_for('pages.discord_rules_save') }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="index" value="{{ index }}">
+          {{ discord_rule_fields(rule) }}
+          <div class="btn-row">
+            <button type="submit" class="btn primary">Speichern</button>
+          </div>
+        </form>
+
+        <form method="post" action="{{ url_for('pages.discord_rules_delete') }}" style="margin-top:10px"
+              onsubmit="return confirm('Regel &quot;{{ rule.name }}&quot; wirklich löschen?')">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="index" value="{{ index }}">
+          <button type="submit" class="btn danger small">Regel löschen</button>
+        </form>
+      </div>
+    </details>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="empty">Noch keine Discord-Regel angelegt. Ohne Regel reagiert der Bot in Discord auf nichts.</div>
+  </div>
+{% endfor %}
+
+<div class="card" style="margin-top:16px">
+  <details class="editor">
+    <summary style="font-size:14px">Neue Discord-Regel anlegen</summary>
+    <div>
+      <form method="post" action="{{ url_for('pages.discord_rules_save') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="hidden" name="index" value="">
+        {{ discord_rule_fields(none) }}
         <div class="btn-row">
           <button type="submit" class="btn primary">Regel anlegen</button>
         </div>

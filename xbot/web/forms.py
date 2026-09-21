@@ -136,3 +136,41 @@ def parse_rule_form(form: Mapping[str, Any]) -> dict[str, Any]:
     if str(rule.get("reply_instruction", "")).strip():
         out["reply_instruction"] = str(rule["reply_instruction"]).strip()
     return out
+
+
+def parse_discord_rule_form(form: Mapping[str, Any]) -> dict[str, Any]:
+    """Ein einzelnes Discord-Regelobjekt aus dem Regelformular."""
+    parsed = parse_form(form)
+    rule = parsed.get("rule", {})
+    if not isinstance(rule, dict):
+        raise ConfigError("Das Regelformular war unvollständig.")
+
+    name = str(rule.get("name", "")).strip()
+    if not name:
+        raise ConfigError("Die Regel braucht einen Namen.")
+    if not rule.get("keywords"):
+        raise ConfigError("Die Regel braucht mindestens ein Schlüsselwort.")
+    if not rule.get("actions"):
+        raise ConfigError("Die Regel braucht mindestens eine Aktion.")
+
+    # Nur gesetzte Felder uebernehmen - so bleibt die YAML schlank.
+    out: dict[str, Any] = {
+        "name": name,
+        "keywords": rule["keywords"],
+        "match": rule.get("match") or "any",
+        "actions": rule["actions"],
+    }
+    emoji = str(rule.get("emoji", "")).strip()
+    if emoji:
+        out["emoji"] = emoji
+    elif "react" in out["actions"]:
+        raise ConfigError("Für die Aktion 'reagieren' wird ein Emoji gebraucht.")
+    if rule.get("channels"):
+        out["channels"] = rule["channels"]
+    if rule.get("min_length"):
+        out["min_length"] = rule["min_length"]
+    if rule.get("weight") is not None and float(rule["weight"]) != 1.0:
+        out["weight"] = rule["weight"]
+    if str(rule.get("reply_instruction", "")).strip():
+        out["reply_instruction"] = str(rule["reply_instruction"]).strip()
+    return out
