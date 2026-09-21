@@ -11,6 +11,8 @@ Bedienen lässt er sich vollständig **im Browser** — Zugangsdaten, Regeln,
 Limits, Filter, Texte, Start und Stopp, Echtbetrieb-Schalter und Protokoll.
 Ein Terminal brauchst du nur für den einen Befehl, der den Server startet.
 
+→ **[Produktseite](https://grokhnarsh.github.io/X-Bot/)** · [Quelltext](https://github.com/Grokhnarsh/X-Bot)
+
 ```
 ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
 │  Taktgeber   │─────▶│  Beiträge    │─────▶│              │
