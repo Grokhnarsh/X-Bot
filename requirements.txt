@@ -1,6 +1,9 @@
 # --- X (Twitter) API ---
 tweepy>=4.16,<5
 
+# --- Discord API (REST v10) ---
+requests>=2.31,<3
+
 # --- Konfiguration ---
 PyYAML>=6.0,<7
 python-dotenv>=1.0,<2

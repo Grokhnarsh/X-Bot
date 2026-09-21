@@ -35,6 +35,7 @@ ENV_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("X_ACCESS_TOKEN_SECRET", "Access Token Secret", "gehört zum Access Token"),
     ("X_BEARER_TOKEN", "Bearer Token", "für die Hashtag-Suche"),
     ("ANTHROPIC_API_KEY", "Anthropic API Key", "optional - ohne Key werden Vorlagen genutzt"),
+    ("DISCORD_BOT_TOKEN", "Discord Bot Token", "optional - nur fuer die Discord-Erweiterung"),
 )
 
 #: Eintrag, der aus der .env entfernt werden soll.

@@ -12,6 +12,7 @@ Start stoppen und nicht erst mitten im Betrieb auffallen.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -178,6 +179,33 @@ class BotSettings:
         )
 
 
+def _parse_active_window(
+    data: Mapping[str, Any], ctx: str
+) -> tuple[tuple[int, int], tuple[int, ...]]:
+    """Sendefenster und Wochentage pruefen.
+
+    Geteilt zwischen X und Discord, damit die Regeln nicht auseinanderlaufen.
+    """
+    hours = _int_list(data, "active_hours", (8, 22), ctx=ctx)
+    if len(hours) != 2:
+        raise ConfigError(f"{ctx}active_hours: erwartet genau zwei Werte [start, ende].")
+    start, end = hours
+    for value in (start, end):
+        if not 0 <= value <= 23:
+            raise ConfigError(f"{ctx}active_hours: Stunden muessen zwischen 0 und 23 liegen (ist {value}).")
+    if start >= end:
+        raise ConfigError(f"{ctx}active_hours: Startstunde ({start}) muss kleiner als Endstunde ({end}) sein.")
+
+    weekdays = _int_list(data, "active_weekdays", (0, 1, 2, 3, 4, 5, 6), ctx=ctx)
+    for day in weekdays:
+        if not 0 <= day <= 6:
+            raise ConfigError(f"{ctx}active_weekdays: Werte muessen zwischen 0 (Mo) und 6 (So) liegen (ist {day}).")
+    if not weekdays:
+        raise ConfigError(f"{ctx}active_weekdays: mindestens ein Wochentag muss aktiv sein.")
+
+    return (start, end), tuple(sorted(set(weekdays)))
+
+
 @dataclass(frozen=True)
 class PostingSettings:
     enabled: bool = True
@@ -193,29 +221,14 @@ class PostingSettings:
     @classmethod
     def parse(cls, data: Mapping[str, Any]) -> "PostingSettings":
         ctx = "posting."
-        hours = _int_list(data, "active_hours", (8, 22), ctx=ctx)
-        if len(hours) != 2:
-            raise ConfigError(f"{ctx}active_hours: erwartet genau zwei Werte [start, ende].")
-        start, end = hours
-        for value in (start, end):
-            if not 0 <= value <= 23:
-                raise ConfigError(f"{ctx}active_hours: Stunden muessen zwischen 0 und 23 liegen (ist {value}).")
-        if start >= end:
-            raise ConfigError(f"{ctx}active_hours: Startstunde ({start}) muss kleiner als Endstunde ({end}) sein.")
-
-        weekdays = _int_list(data, "active_weekdays", (0, 1, 2, 3, 4, 5, 6), ctx=ctx)
-        for day in weekdays:
-            if not 0 <= day <= 6:
-                raise ConfigError(f"{ctx}active_weekdays: Werte muessen zwischen 0 (Mo) und 6 (So) liegen (ist {day}).")
-        if not weekdays:
-            raise ConfigError(f"{ctx}active_weekdays: mindestens ein Wochentag muss aktiv sein.")
+        (start, end), weekdays = _parse_active_window(data, ctx)
 
         return cls(
             enabled=_bool(data, "enabled", True, ctx=ctx),
             interval_minutes=_int(data, "interval_minutes", 240, minimum=1, ctx=ctx),
             jitter_minutes=_int(data, "jitter_minutes", 60, minimum=0, ctx=ctx),
             active_hours=(start, end),
-            active_weekdays=tuple(sorted(set(weekdays))),
+            active_weekdays=weekdays,
             max_per_day=_int(data, "max_per_day", 5, minimum=0, ctx=ctx),
             include_hashtags=_bool(data, "include_hashtags", True, ctx=ctx),
             max_hashtags=_int(data, "max_hashtags", 2, minimum=0, maximum=10, ctx=ctx),
@@ -419,6 +432,283 @@ class ContentSettings:
         )
 
 
+# ---------------------------------------------------------------------------
+# Discord
+#
+# Discord hat keine Hashtags und keine oeffentliche Suche. Der Bot beobachtet
+# deshalb feste Kanaele und reagiert auf Schluesselwoerter. Statt "liken" gibt
+# es Reaktionen (Emoji), statt "teilen" gibt es nichts Vergleichbares - ein
+# Repost waere auf Discord ein Zitat in einem anderen Kanal und damit eine
+# andere Handlung, die der Bot bewusst nicht vornimmt.
+# ---------------------------------------------------------------------------
+VALID_DISCORD_ACTIONS = ("react", "reply")
+
+#: Discord-IDs sind Schneeflocken: reine Ziffernfolgen.
+_SNOWFLAKE = re.compile(r"^\d{5,25}$")
+
+
+def _channel_ids(data: Mapping[str, Any], key: str, *, ctx: str) -> tuple[str, ...]:
+    """Kanal-IDs einlesen und auf Plausibilitaet pruefen.
+
+    Ein haeufiger Fehler ist, den Kanalnamen statt der ID einzutragen - die ID
+    bekommt man nur mit eingeschaltetem Entwicklermodus per Rechtsklick.
+    """
+    werte = _str_list(data, key, ctx=ctx)
+    out: list[str] = []
+    for wert in werte:
+        wert = wert.strip()
+        if not wert:
+            continue
+        if not _SNOWFLAKE.match(wert):
+            raise ConfigError(
+                f"{ctx}{key}: '{wert}' ist keine Kanal-ID. Discord-IDs sind reine Ziffern - "
+                "im Entwicklermodus per Rechtsklick auf den Kanal kopieren."
+            )
+        out.append(wert)
+    return tuple(dict.fromkeys(out))
+
+
+@dataclass(frozen=True)
+class DiscordLimits:
+    """Obergrenzen je Aktion. ``0`` sperrt die Aktion vollstaendig."""
+
+    post_per_hour: int = 2
+    post_per_day: int = 5
+    react_per_hour: int = 20
+    react_per_day: int = 120
+    reply_per_hour: int = 3
+    reply_per_day: int = 12
+    min_seconds_between_actions: int = 20
+
+    @classmethod
+    def parse(cls, data: Mapping[str, Any]) -> "DiscordLimits":
+        ctx = "discord.engagement.limits."
+        return cls(
+            post_per_hour=_int(data, "post_per_hour", 2, minimum=0, ctx=ctx),
+            post_per_day=_int(data, "post_per_day", 5, minimum=0, ctx=ctx),
+            react_per_hour=_int(data, "react_per_hour", 20, minimum=0, ctx=ctx),
+            react_per_day=_int(data, "react_per_day", 120, minimum=0, ctx=ctx),
+            reply_per_hour=_int(data, "reply_per_hour", 3, minimum=0, ctx=ctx),
+            reply_per_day=_int(data, "reply_per_day", 12, minimum=0, ctx=ctx),
+            min_seconds_between_actions=_int(data, "min_seconds_between_actions", 20, minimum=0, ctx=ctx),
+        )
+
+    def per_hour(self, action: str) -> int:
+        return int(getattr(self, f"{action}_per_hour"))
+
+    def per_day(self, action: str) -> int:
+        return int(getattr(self, f"{action}_per_day"))
+
+
+@dataclass(frozen=True)
+class DiscordPostingSettings:
+    enabled: bool = True
+    interval_minutes: int = 240
+    jitter_minutes: int = 60
+    active_hours: tuple[int, int] = (8, 22)
+    active_weekdays: tuple[int, ...] = (0, 1, 2, 3, 4, 5, 6)
+    max_per_day: int = 5
+    channels: tuple[str, ...] = ()
+
+    @classmethod
+    def parse(cls, data: Mapping[str, Any]) -> "DiscordPostingSettings":
+        ctx = "discord.posting."
+        (start, end), weekdays = _parse_active_window(data, ctx)
+        return cls(
+            enabled=_bool(data, "enabled", True, ctx=ctx),
+            interval_minutes=_int(data, "interval_minutes", 240, minimum=1, ctx=ctx),
+            jitter_minutes=_int(data, "jitter_minutes", 60, minimum=0, ctx=ctx),
+            active_hours=(start, end),
+            active_weekdays=weekdays,
+            max_per_day=_int(data, "max_per_day", 5, minimum=0, ctx=ctx),
+            channels=_channel_ids(data, "channels", ctx=ctx),
+        )
+
+
+@dataclass(frozen=True)
+class DiscordEngagementSettings:
+    enabled: bool = True
+    interval_minutes: int = 10
+    jitter_minutes: int = 4
+    watch_channels: tuple[str, ...] = ()
+    max_messages_per_channel: int = 50
+    lookback_minutes: int = 120
+    max_actions_per_cycle: int = 5
+    limits: DiscordLimits = field(default_factory=DiscordLimits)
+
+    @classmethod
+    def parse(cls, data: Mapping[str, Any]) -> "DiscordEngagementSettings":
+        ctx = "discord.engagement."
+        return cls(
+            enabled=_bool(data, "enabled", True, ctx=ctx),
+            interval_minutes=_int(data, "interval_minutes", 10, minimum=1, ctx=ctx),
+            jitter_minutes=_int(data, "jitter_minutes", 4, minimum=0, ctx=ctx),
+            watch_channels=_channel_ids(data, "watch_channels", ctx=ctx),
+            # Die Discord-API liefert hoechstens 100 Nachrichten je Abruf.
+            max_messages_per_channel=_int(data, "max_messages_per_channel", 50, minimum=1, maximum=100, ctx=ctx),
+            lookback_minutes=_int(data, "lookback_minutes", 120, minimum=1, maximum=10080, ctx=ctx),
+            max_actions_per_cycle=_int(data, "max_actions_per_cycle", 5, minimum=0, ctx=ctx),
+            limits=DiscordLimits.parse(_section(data, "limits")),
+        )
+
+
+@dataclass(frozen=True)
+class DiscordRule:
+    """Worauf der Bot in Discord reagiert und wie."""
+
+    name: str
+    keywords: tuple[str, ...]
+    actions: tuple[str, ...]
+    match: str = "any"
+    channels: tuple[str, ...] = ()      # leer = alle beobachteten Kanaele
+    emoji: str = "\U0001F440"          # Augenpaar
+    min_length: int = 0
+    weight: float = 1.0
+    reply_instruction: str = ""
+
+    @classmethod
+    def parse(cls, data: Mapping[str, Any], index: int) -> "DiscordRule":
+        if not isinstance(data, Mapping):
+            raise ConfigError(f"discord.rules[{index}]: erwartet ein Objekt, erhalten {type(data).__name__}.")
+        name = _str(data, "name", f"Discord-Regel {index + 1}")
+        ctx = f"discord.rules[{index}] ({name}) -> "
+
+        keywords = tuple(
+            dict.fromkeys(k.strip().lower() for k in _str_list(data, "keywords", ctx=ctx) if k.strip())
+        )
+        if not keywords:
+            raise ConfigError(f"{ctx}keywords: mindestens ein Schluesselwort ist erforderlich.")
+
+        actions = tuple(dict.fromkeys(a.strip().lower() for a in _str_list(data, "actions", ("react",), ctx=ctx)))
+        unknown = [a for a in actions if a not in VALID_DISCORD_ACTIONS]
+        if unknown:
+            raise ConfigError(f"{ctx}actions: unbekannt {unknown}. Erlaubt sind {list(VALID_DISCORD_ACTIONS)}.")
+        if not actions:
+            raise ConfigError(f"{ctx}actions: mindestens eine Aktion ist erforderlich.")
+
+        match = _str(data, "match", "any", ctx=ctx).lower()
+        if match not in VALID_MATCH_MODES:
+            raise ConfigError(f"{ctx}match: erwartet 'any' oder 'all', erhalten {match!r}.")
+
+        emoji = _str(data, "emoji", "\U0001F440", ctx=ctx) or "\U0001F440"
+        if "react" in actions and not emoji:
+            raise ConfigError(f"{ctx}emoji: fuer die Aktion 'react' wird ein Emoji gebraucht.")
+
+        return cls(
+            name=name,
+            keywords=keywords,
+            actions=actions,
+            match=match,
+            channels=_channel_ids(data, "channels", ctx=ctx),
+            emoji=emoji,
+            min_length=_int(data, "min_length", 0, minimum=0, ctx=ctx),
+            weight=_float(data, "weight", 1.0, minimum=0.0, ctx=ctx),
+            reply_instruction=_str(data, "reply_instruction", "", ctx=ctx),
+        )
+
+    def matches(self, text: str, channel_id: str = "") -> bool:
+        """Passt diese Regel auf den Text (und gegebenenfalls den Kanal)?"""
+        if self.channels and channel_id and channel_id not in self.channels:
+            return False
+        lowered = text.lower()
+        if self.match == "all":
+            return all(word in lowered for word in self.keywords)
+        return any(word in lowered for word in self.keywords)
+
+
+@dataclass(frozen=True)
+class DiscordFilterSettings:
+    skip_bots: bool = True
+    blocked_keywords: tuple[str, ...] = ()
+    blocked_users: tuple[str, ...] = ()
+    allowed_users: tuple[str, ...] = ()
+    skip_links: bool = False
+    skip_replies: bool = False
+    max_mentions: int = 3
+    min_message_length: int = 20
+
+    @classmethod
+    def parse(cls, data: Mapping[str, Any]) -> "DiscordFilterSettings":
+        ctx = "discord.filters."
+        return cls(
+            # Bots untereinander koennen Endlosschleifen ausloesen - deshalb
+            # ist das Ueberspringen die Voreinstellung.
+            skip_bots=_bool(data, "skip_bots", True, ctx=ctx),
+            blocked_keywords=tuple(k.lower() for k in _str_list(data, "blocked_keywords", ctx=ctx)),
+            blocked_users=tuple(u.strip() for u in _str_list(data, "blocked_users", ctx=ctx)),
+            allowed_users=tuple(u.strip() for u in _str_list(data, "allowed_users", ctx=ctx)),
+            skip_links=_bool(data, "skip_links", False, ctx=ctx),
+            skip_replies=_bool(data, "skip_replies", False, ctx=ctx),
+            max_mentions=_int(data, "max_mentions", 3, minimum=0, ctx=ctx),
+            min_message_length=_int(data, "min_message_length", 20, minimum=0, ctx=ctx),
+        )
+
+
+@dataclass(frozen=True)
+class DiscordSettings:
+    enabled: bool = False
+    #: Discord erlaubt 2000 Zeichen. Der Bot bleibt darunter, damit seine
+    #: Beitraege nicht als Textwand im Kanal stehen.
+    max_chars: int = 600
+    posting: DiscordPostingSettings = field(default_factory=DiscordPostingSettings)
+    engagement: DiscordEngagementSettings = field(default_factory=DiscordEngagementSettings)
+    rules: tuple[DiscordRule, ...] = ()
+    filters: DiscordFilterSettings = field(default_factory=DiscordFilterSettings)
+
+    @property
+    def watched_keywords(self) -> tuple[str, ...]:
+        seen: dict[str, None] = {}
+        for rule in self.rules:
+            for word in rule.keywords:
+                seen.setdefault(word, None)
+        return tuple(seen)
+
+    @property
+    def all_watch_channels(self) -> tuple[str, ...]:
+        """Beobachtete Kanaele plus die, die einzelne Regeln zusaetzlich nennen."""
+        seen: dict[str, None] = dict.fromkeys(self.engagement.watch_channels)
+        for rule in self.rules:
+            for channel in rule.channels:
+                seen.setdefault(channel, None)
+        return tuple(seen)
+
+    @classmethod
+    def parse(cls, data: Mapping[str, Any]) -> "DiscordSettings":
+        raw_rules = data.get("rules", []) or []
+        if not isinstance(raw_rules, Sequence) or isinstance(raw_rules, str):
+            raise ConfigError("discord.rules: erwartet eine Liste von Regeln.")
+        rules = tuple(DiscordRule.parse(item, i) for i, item in enumerate(raw_rules))
+
+        enabled = _bool(data, "enabled", False, ctx="discord.")
+        posting = DiscordPostingSettings.parse(_section(data, "posting"))
+        engagement = DiscordEngagementSettings.parse(_section(data, "engagement"))
+
+        if enabled and engagement.enabled and not rules:
+            raise ConfigError(
+                "discord.engagement.enabled ist true, aber es ist keine Regel definiert. "
+                "Lege mindestens eine Regel unter 'discord.rules:' an."
+            )
+        if enabled and engagement.enabled and not (engagement.watch_channels or any(r.channels for r in rules)):
+            raise ConfigError(
+                "discord.engagement.enabled ist true, aber es ist kein Kanal angegeben. "
+                "Trage unter 'discord.engagement.watch_channels:' mindestens eine Kanal-ID ein."
+            )
+        if enabled and posting.enabled and not posting.channels:
+            raise ConfigError(
+                "discord.posting.enabled ist true, aber es ist kein Zielkanal angegeben. "
+                "Trage unter 'discord.posting.channels:' mindestens eine Kanal-ID ein."
+            )
+
+        return cls(
+            enabled=enabled,
+            max_chars=_int(data, "max_chars", 600, minimum=1, maximum=2000, ctx="discord."),
+            posting=posting,
+            engagement=engagement,
+            rules=rules,
+            filters=DiscordFilterSettings.parse(_section(data, "filters")),
+        )
+
+
 @dataclass(frozen=True)
 class StorageSettings:
     database: str = "data/xbot.db"
@@ -459,6 +749,7 @@ class Credentials:
     access_token_secret: str = ""
     bearer_token: str = ""
     anthropic_api_key: str = ""
+    discord_bot_token: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Credentials":
@@ -470,6 +761,7 @@ class Credentials:
             access_token_secret=env.get("X_ACCESS_TOKEN_SECRET", "").strip(),
             bearer_token=env.get("X_BEARER_TOKEN", "").strip(),
             anthropic_api_key=env.get("ANTHROPIC_API_KEY", "").strip(),
+            discord_bot_token=env.get("DISCORD_BOT_TOKEN", "").strip(),
         )
 
     @property
@@ -485,6 +777,10 @@ class Credentials:
     @property
     def has_ai(self) -> bool:
         return bool(self.anthropic_api_key)
+
+    @property
+    def has_discord(self) -> bool:
+        return bool(self.discord_bot_token)
 
     def missing_write_fields(self) -> list[str]:
         mapping = {
@@ -507,6 +803,7 @@ class Config:
     rules: tuple[Rule, ...]
     filters: FilterSettings
     content: ContentSettings
+    discord: DiscordSettings
     storage: StorageSettings
     logging: LoggingSettings
     credentials: Credentials
@@ -547,6 +844,7 @@ class Config:
             rules=rules,
             filters=FilterSettings.parse(_section(data, "filters")),
             content=ContentSettings.parse(_section(data, "content")),
+            discord=DiscordSettings.parse(_section(data, "discord")),
             storage=StorageSettings.parse(_section(data, "storage")),
             logging=LoggingSettings.parse(_section(data, "logging")),
             credentials=credentials or Credentials.from_env(),

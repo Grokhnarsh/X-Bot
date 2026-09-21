@@ -8,11 +8,20 @@
 <div class="card">
   <form method="get" class="inline" style="margin-bottom:16px">
     <div class="field">
+      <label>Plattform</label>
+      <select name="platform" onchange="this.form.submit()">
+        <option value="">beide</option>
+        <option value="x" {% if filter_platform == 'x' %}selected{% endif %}>X</option>
+        <option value="discord" {% if filter_platform == 'discord' %}selected{% endif %}>Discord</option>
+      </select>
+    </div>
+    <div class="field">
       <label>Aktion</label>
       <select name="action" onchange="this.form.submit()">
         <option value="">alle</option>
-        {% for action in actions %}
-          <option value="{{ action }}" {% if filter_action == action %}selected{% endif %}>{{ action_labels[action] }}</option>
+        {% for action in action_choices %}
+          {% set labels = discord_action_labels if filter_platform == 'discord' else action_labels %}
+          <option value="{{ action }}" {% if filter_action == action %}selected{% endif %}>{{ labels[action] }}</option>
         {% endfor %}
       </select>
     </div>
@@ -33,11 +42,23 @@
           <tr>
             <td class="num">{{ row.when }}</td>
             <td>
-              <span class="tag">{{ action_labels.get(row.action, row.action) }}</span>
+              <span class="tag">
+                {%- if row.platform == 'discord' -%}
+                  {{ discord_action_labels.get(row.action, row.action) }}
+                {%- else -%}
+                  {{ action_labels.get(row.action, row.action) }}
+                {%- endif -%}
+              </span>
+              {% if row.platform == 'discord' %}<span class="tag neutral">Discord</span>{% endif %}
               {% if row.dry_run %}<span class="tag neutral">Probe</span>{% endif %}
             </td>
             <td class="text">
-              {% if row.target_author %}
+              {% if row.platform == 'discord' %}
+                {# Ohne Server-ID laesst sich kein Direktlink bauen - deshalb nur der Name. #}
+                {% if row.target_author %}{{ row.target_author }}
+                {% elif row.target_id %}<span class="mono">{{ row.target_id }}</span>
+                {% else %}-{% endif %}
+              {% elif row.target_author %}
                 <a href="https://x.com/{{ row.target_author }}/status/{{ row.target_id }}"
                    target="_blank" rel="noopener noreferrer">@{{ row.target_author }}</a>
               {% elif row.target_id %}<span class="mono">{{ row.target_id }}</span>
@@ -52,7 +73,7 @@
 
     {% if pages > 1 %}
       <div class="pager">
-        {% set query = '&action=' ~ filter_action ~ ('&dry=1' if include_dry else '&dry=0') %}
+        {% set query = '&action=' ~ filter_action ~ '&platform=' ~ filter_platform ~ ('&dry=1' if include_dry else '&dry=0') %}
         {% if page_number > 1 %}
           <a class="btn small" href="?page={{ page_number - 1 }}{{ query }}">Zurück</a>
         {% endif %}

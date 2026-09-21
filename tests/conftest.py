@@ -8,9 +8,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from xbot.config import Config, Credentials
+from xbot.config import Config, Credentials, DiscordRule
+from xbot.discord.client import DiscordClientError
+from xbot.discord.models import DiscordAuthor, DiscordMessage
 from xbot.models import ActionResult, Author, Tweet
-from xbot.state import Store
+from xbot.state import Store, utcnow
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -109,3 +111,116 @@ class FakeXClient:
 @pytest.fixture
 def fake_client() -> FakeXClient:
     return FakeXClient()
+
+
+# ---------------------------------------------------------------------------
+# Discord
+# ---------------------------------------------------------------------------
+def make_message(message_id: str = "100", **overrides) -> DiscordMessage:
+    """Eine unauffaellige Discord-Nachricht, die alle Standardfilter besteht."""
+    base = dict(
+        id=message_id,
+        channel_id="555000000000000000",
+        content="Wie testet ihr eigentlich python Code, der auf Zeitzonen angewiesen ist?",
+        author=DiscordAuthor(
+            id=f"u{message_id}", username=f"nutzer{message_id}", display_name=f"Nutzer {message_id}"
+        ),
+        created_at=utcnow(),
+    )
+    base.update(overrides)
+    return DiscordMessage(**base)
+
+
+class FakeDiscordClient:
+    """Ersetzt den echten Discord-Client im Test und protokolliert alle Aufrufe."""
+
+    def __init__(
+        self,
+        messages=(),
+        *,
+        dry_run: bool = False,
+        user_id: str = "BOT",
+        fail: str = "",
+        read_error: str = "",
+    ) -> None:
+        self.messages = list(messages)
+        self.dry_run = dry_run
+        self.user_id = user_id
+        self.fail = fail
+        self.read_error = read_error
+        self.calls: list[tuple] = []
+        self.fetches: list[tuple] = []
+
+    def verify(self) -> DiscordAuthor:
+        return DiscordAuthor(id=self.user_id, username="testbot", display_name="Testbot", is_bot=True)
+
+    def fetch_messages(self, channel_id, *, limit=50, after=None):
+        self.fetches.append((channel_id, limit, after))
+        if self.read_error:
+            raise DiscordClientError(self.read_error)
+        # Wie der echte Client: aufsteigend nach Schneeflocke.
+        passend = [m for m in self.messages if not after or int(m.id) > int(after)]
+        return sorted(passend, key=lambda m: int(m.id))
+
+    def _result(self, action, target_id=None, text=None):
+        if self.fail == action:
+            return ActionResult(action, ok=False, target_id=target_id, error="simulierter Fehler")
+        return ActionResult(
+            action, ok=True, dry_run=self.dry_run, target_id=target_id, text=text, result_id="new-id"
+        )
+
+    def post(self, text, channel_id, *, reply_to=None):
+        action = "reply" if reply_to else "post"
+        self.calls.append((action, reply_to or channel_id, text))
+        return self._result(action, reply_to or channel_id, text)
+
+    def react(self, channel_id, message_id, emoji):
+        self.calls.append(("react", message_id, emoji))
+        return self._result("react", message_id, emoji)
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.fixture
+def discord_config(config) -> Config:
+    """Beispielkonfiguration mit eingeschaltetem, testbarem Discord-Teil."""
+    return replace(
+        config,
+        discord=replace(
+            config.discord,
+            enabled=True,
+            posting=replace(
+                config.discord.posting,
+                channels=("111000000000000000", "222000000000000000"),
+                active_hours=(0, 23),
+                active_weekdays=(0, 1, 2, 3, 4, 5, 6),
+            ),
+            engagement=replace(
+                config.discord.engagement,
+                watch_channels=("555000000000000000",),
+                max_actions_per_cycle=10,
+                limits=replace(config.discord.engagement.limits, min_seconds_between_actions=0),
+            ),
+            rules=(
+                DiscordRule(
+                    name="Python",
+                    keywords=("python",),
+                    actions=("react", "reply"),
+                    emoji="\U0001F440",
+                    weight=2.0,
+                ),
+                DiscordRule(
+                    name="Werkzeuge",
+                    keywords=("docker", "ci"),
+                    actions=("react",),
+                    emoji="✅",
+                ),
+            ),
+        ),
+    )
+
+
+@pytest.fixture
+def fake_discord_client() -> FakeDiscordClient:
+    return FakeDiscordClient()

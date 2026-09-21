@@ -24,6 +24,8 @@ bp = Blueprint("api", __name__, url_prefix="/api")
 RUNNABLE = {
     "post": "Beitrag jetzt veröffentlichen",
     "engage": "Jetzt auf Hashtags reagieren",
+    "discord_post": "Discord-Beitrag jetzt senden",
+    "discord_engage": "Jetzt auf Discord-Kanäle reagieren",
     "preview": "Textvorschläge erzeugen",
     "doctor": "Einrichtung prüfen",
     "reload": "Konfiguration neu laden",

@@ -249,6 +249,137 @@
     </fieldset>
   </div>
 
+  {# ---------------------------------------------------------- Discord #}
+  <div class="card">
+    <fieldset style="margin:0">
+      <legend>Discord</legend>
+      <p class="hint">Zweite Plattform. Der Bot postet in Kanäle und reagiert dort auf
+         Schlüsselwörter. Zähler und Limits sind von X getrennt.
+         Der Token gehört in die <a href="{{ url_for('pages.setup') }}">Einrichtung</a>.</p>
+
+      {{ switch('discord.enabled', 'Discord-Erweiterung aktiv',
+                'Braucht DISCORD_BOT_TOKEN und mindestens eine Kanal-ID.', config.discord.enabled) }}
+
+      <div class="inline" style="margin:16px 0 0">
+        {{ number('discord.max_chars', 'Max. Zeichen', config.discord.max_chars, desc='Discord erlaubt 2000', min=1, max=2000) }}
+      </div>
+
+      <h3 style="font-size:13px;margin:20px 0 10px">Eigene Beiträge</h3>
+      {{ switch('discord.posting.enabled', 'In Kanäle posten', '', config.discord.posting.enabled) }}
+
+      <div class="inline" style="margin:16px 0 0">
+        {{ number('discord.posting.interval_minutes', 'Abstand (Min.)', config.discord.posting.interval_minutes, min=1) }}
+        {{ number('discord.posting.jitter_minutes', 'Streuung (Min.)', config.discord.posting.jitter_minutes, desc='gegen Taktmuster') }}
+        {{ number('discord.posting.max_per_day', 'Höchstens pro Tag', config.discord.posting.max_per_day) }}
+      </div>
+
+      <div class="inline" style="margin-top:14px">
+        <div class="field">
+          <label>Aktive Zeit</label>
+          <div class="desc">Ortszeit der eingestellten Zeitzone.</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" name="intlist:discord.posting.active_hours"
+                   value="{{ config.discord.posting.active_hours[0] }}" min="0" max="23" style="width:88px">
+            <span class="muted">bis</span>
+            <input type="number" name="intlist:discord.posting.active_hours"
+                   value="{{ config.discord.posting.active_hours[1] }}" min="0" max="23" style="width:88px">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Aktive Wochentage</label>
+          <input type="hidden" name="intlist:discord.posting.active_weekdays" value="">
+          <div class="check-row">
+            {% for day in weekday_names %}
+              <label class="check" style="padding:6px 10px">
+                <input type="checkbox" name="intlist:discord.posting.active_weekdays" value="{{ loop.index0 }}"
+                       {% if loop.index0 in config.discord.posting.active_weekdays %}checked{% endif %}>
+                <span>{{ day }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:14px">
+        <label>Zielkanäle</label>
+        <div class="desc">Kanal-IDs durch Komma getrennt - der Bot geht sie reihum durch.
+           Die ID bekommt man mit eingeschaltetem Entwicklermodus per Rechtsklick auf den Kanal.</div>
+        <input type="text" name="csv:discord.posting.channels"
+               value="{{ config.discord.posting.channels|join(', ') }}"
+               placeholder="123456789012345678, 234567890123456789">
+      </div>
+
+      <h3 style="font-size:13px;margin:22px 0 10px">Auf Nachrichten reagieren</h3>
+      {{ switch('discord.engagement.enabled', 'Kanäle beobachten',
+                'Braucht im Developer Portal das MESSAGE CONTENT INTENT.', config.discord.engagement.enabled) }}
+
+      <div class="field" style="margin-top:16px">
+        <label>Beobachtete Kanäle</label>
+        <div class="desc">Kanal-IDs durch Komma getrennt.</div>
+        <input type="text" name="csv:discord.engagement.watch_channels"
+               value="{{ config.discord.engagement.watch_channels|join(', ') }}"
+               placeholder="123456789012345678">
+      </div>
+
+      <div class="inline" style="margin-top:14px">
+        {{ number('discord.engagement.interval_minutes', 'Abstand (Min.)', config.discord.engagement.interval_minutes, min=1) }}
+        {{ number('discord.engagement.jitter_minutes', 'Streuung (Min.)', config.discord.engagement.jitter_minutes) }}
+        {{ number('discord.engagement.max_messages_per_channel', 'Nachrichten je Kanal', config.discord.engagement.max_messages_per_channel, desc='1 bis 100', min=1, max=100) }}
+        {{ number('discord.engagement.lookback_minutes', 'Rückblick (Min.)', config.discord.engagement.lookback_minutes, min=1) }}
+        {{ number('discord.engagement.max_actions_per_cycle', 'Aktionen je Durchlauf', config.discord.engagement.max_actions_per_cycle) }}
+      </div>
+
+      <h3 style="font-size:13px;margin:22px 0 10px">Limits</h3>
+      <div class="grid cols-4" style="gap:10px">
+        {% for action in discord_actions %}
+          <div class="tile">
+            <div class="label" style="margin-bottom:8px">{{ discord_action_labels[action] }}</div>
+            <div class="field" style="margin-bottom:8px">
+              <label style="font-size:12px;font-weight:500">je Stunde</label>
+              <input type="number" name="int:discord.engagement.limits.{{ action }}_per_hour"
+                     value="{{ config.discord.engagement.limits.per_hour(action) }}" min="0" style="max-width:100%">
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label style="font-size:12px;font-weight:500">je Tag</label>
+              <input type="number" name="int:discord.engagement.limits.{{ action }}_per_day"
+                     value="{{ config.discord.engagement.limits.per_day(action) }}" min="0" style="max-width:100%">
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div style="margin-top:14px">
+        {{ number('discord.engagement.limits.min_seconds_between_actions', 'Mindestabstand zwischen zwei Aktionen (Sek.)',
+                  config.discord.engagement.limits.min_seconds_between_actions,
+                  desc='Gilt nur für Discord - X bremst dadurch nicht.') }}
+      </div>
+
+      <h3 style="font-size:13px;margin:22px 0 10px">Sicherheitsfilter</h3>
+      <div class="check-row" style="margin-bottom:14px">
+        {{ switch('discord.filters.skip_bots', 'Bots überspringen', 'verhindert Bot-Schleifen', config.discord.filters.skip_bots) }}
+        {{ switch('discord.filters.skip_replies', 'Antworten überspringen', '', config.discord.filters.skip_replies) }}
+        {{ switch('discord.filters.skip_links', 'Nachrichten mit Links überspringen', '', config.discord.filters.skip_links) }}
+      </div>
+
+      <div class="inline">
+        {{ number('discord.filters.min_message_length', 'Mindestlänge', config.discord.filters.min_message_length, desc='Zeichen ohne Links und Pings') }}
+        {{ number('discord.filters.max_mentions', 'Max. Erwähnungen', config.discord.filters.max_mentions) }}
+      </div>
+
+      <div class="field" style="margin-top:14px">
+        <label>Gesperrte Begriffe</label>
+        <input type="text" name="csv:discord.filters.blocked_keywords"
+               value="{{ config.discord.filters.blocked_keywords|join(', ') }}">
+      </div>
+
+      <div class="inline" style="margin-top:4px">
+        {{ textline('discord.filters.blocked_users', 'Gesperrte Mitglieder', config.discord.filters.blocked_users, desc='Name oder Konto-ID') }}
+        {{ textline('discord.filters.allowed_users', 'Nur diese Mitglieder', config.discord.filters.allowed_users, desc='leer = alle erlaubt') }}
+      </div>
+    </fieldset>
+  </div>
+
   <div class="btn-row" style="margin-top:4px">
     <button type="submit" class="btn primary">Alle Einstellungen speichern</button>
     <a class="btn" href="{{ url_for('pages.settings') }}">Verwerfen</a>

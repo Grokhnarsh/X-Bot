@@ -127,26 +127,37 @@
     if (node) { node.textContent = value; }
   }
 
+  /* Zahlen und Balken eines Plattformblocks auffrischen. "prefix" ist leer
+     fuer X und "discord-" fuer Discord - die IDs im Markup heissen genauso. */
+  function applyCounters(prefix, block) {
+    if (!block) { return; }
+    setText("stat-" + prefix + "total", block.today_total != null ? block.today_total : "-");
+
+    var today = block.today || {};
+    Object.keys(today).forEach(function (action) {
+      setText("stat-" + prefix + action, today[action]);
+    });
+
+    var quota = block.quota || {};
+    Object.keys(quota).forEach(function (action) {
+      var usage = quota[action];
+      var fill = document.getElementById("meter-" + prefix + action);
+      var value = document.getElementById("meterval-" + prefix + action);
+      if (fill) {
+        var share = usage.limit_day ? Math.min(1, usage.used_day / usage.limit_day) : 0;
+        fill.style.width = (share * 100).toFixed(1) + "%";
+        fill.className = "meter-fill" + (share >= 0.9 ? " critical" : share >= 0.7 ? " warn" : "");
+      }
+      if (value) { value.textContent = usage.used_day + " / " + usage.limit_day; }
+    });
+  }
+
   function refreshStatus() {
     if (!document.getElementById("live-root")) { return; }
     getJSON("/api/status").then(function (data) {
       var snapshot = data.snapshot || {};
-      setText("stat-total", snapshot.today_total != null ? snapshot.today_total : "-");
-      var today = snapshot.today || {};
-      Object.keys(today).forEach(function (action) { setText("stat-" + action, today[action]); });
-
-      var quota = snapshot.quota || {};
-      Object.keys(quota).forEach(function (action) {
-        var usage = quota[action];
-        var fill = document.getElementById("meter-" + action);
-        var value = document.getElementById("meterval-" + action);
-        if (fill) {
-          var share = usage.limit_day ? Math.min(1, usage.used_day / usage.limit_day) : 0;
-          fill.style.width = (share * 100).toFixed(1) + "%";
-          fill.className = "meter-fill" + (share >= 0.9 ? " critical" : share >= 0.7 ? " warn" : "");
-        }
-        if (value) { value.textContent = usage.used_day + " / " + usage.limit_day; }
-      });
+      applyCounters("", snapshot);
+      applyCounters("discord-", snapshot.discord);
 
       (data.jobs || []).forEach(function (job, index) {
         var node = document.getElementById("job-next-" + index);

@@ -3,6 +3,8 @@
 {% block heading %}Übersicht{% endblock %}
 {% block subheading %}
   {{ config.rules|length }} Regeln, {{ config.monitored_hashtags|length }} Hashtags
+  {%- if config.discord.enabled %} &middot; Discord: {{ config.discord.rules|length }} Regeln,
+    {{ config.discord.watched_keywords|length }} Schlüsselwörter{% endif %}
   &middot; Zeitzone {{ config.bot.timezone }}
 {% endblock %}
 
@@ -23,13 +25,21 @@
     </div>
   {% endif %}
 
+  {% if status.discord.enabled and not status.discord.token_ok %}
+    <div class="note warn" style="margin-bottom:16px">
+      <span class="mark">!</span>
+      <span>Discord ist eingeschaltet, aber es fehlt der Bot-Token.
+        <a href="{{ url_for('pages.setup') }}">Jetzt eintragen</a>.</span>
+    </div>
+  {% endif %}
+
   {# ------------------------------------------------------------ Steuerung #}
   <div class="card">
     <div class="card-head">
       <h2>Steuerung</h2>
       <span class="muted" style="font-size:12.5px">
         {% if config.bot.dry_run %}Im Probelauf wird protokolliert, aber nichts gesendet.
-        {% else %}Der Bot sendet wirklich auf X.{% endif %}
+        {% else %}Der Bot sendet wirklich auf X{% if config.discord.enabled %} und in Discord{% endif %}.{% endif %}
       </span>
     </div>
 
@@ -59,6 +69,21 @@
       <button type="button" class="btn" data-run="preview" data-label="Textvorschau">Vorschau</button>
       <button type="button" class="btn" data-run="doctor" data-label="Prüfung">Prüfen</button>
     </div>
+
+    {% if status.discord.enabled %}
+      <div class="btn-row" style="margin-top:10px;padding-top:12px;border-top:1px solid var(--grid)">
+        <span class="muted" style="font-size:12.5px;align-self:center">Discord</span>
+        <span style="flex:1"></span>
+        <button type="button" class="btn" data-run="discord_post" data-label="Discord-Beitrag"
+                {% if not config.bot.dry_run %}data-confirm="Jetzt wirklich einen Beitrag in Discord senden?"{% endif %}>
+          In Discord posten
+        </button>
+        <button type="button" class="btn" data-run="discord_engage" data-label="Discord-Durchlauf"
+                {% if not config.bot.dry_run %}data-confirm="Jetzt wirklich in Discord reagieren (Reaktionen, Antworten)?"{% endif %}>
+          In Discord reagieren
+        </button>
+      </div>
+    {% endif %}
 
     <div class="result" id="task-result" hidden></div>
   </div>
@@ -118,6 +143,46 @@
     </div>
   </div>
 
+  {% if status.discord.enabled %}
+    <div class="grid cols-2" style="margin-top:16px;align-items:start">
+      <div class="card">
+        <h2>Discord heute</h2>
+        <p class="hint">Getrennt von X gezählt - eine Reaktion dort ist kein Like hier.</p>
+        <div class="hero-label">Aktionen insgesamt</div>
+        <div class="hero" id="stat-discord-total">{{ snapshot.discord.today_total }}</div>
+
+        <div class="grid cols-4" style="margin-top:18px;gap:10px">
+          {% for action in discord_actions %}
+            <div class="tile">
+              <div class="label">{{ discord_action_labels[action] }}</div>
+              <div class="value" id="stat-discord-{{ action }}">{{ snapshot.discord.today[action] }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Discord-Tageslimits</h2>
+        <p class="hint">
+          {{ status.discord.watch_channels }} beobachtete(r) Kanal/Kanäle,
+          {{ status.discord.post_channels }} zum Posten.
+        </p>
+        {% for action in discord_actions %}
+          {% set usage = snapshot.discord.quota[action] %}
+          {% set share = usage.share_day %}
+          <div class="meter-row">
+            <span class="meter-name">{{ discord_action_labels[action] }}</span>
+            <span class="meter">
+              <span class="meter-fill{% if share >= 0.9 %} critical{% elif share >= 0.7 %} warn{% endif %}"
+                    id="meter-discord-{{ action }}" style="width: {{ (share * 100)|round(1) }}%"></span>
+            </span>
+            <span class="meter-value" id="meterval-discord-{{ action }}">{{ usage.used_day }} / {{ usage.limit_day }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
   {# ----------------------------------------------------------- Verlauf #}
   <div class="card" style="margin-top:16px">
     <div class="card-head">
@@ -159,11 +224,18 @@
             <tr>
               <td class="num">{{ format_local(row.created_at) }}</td>
               <td>
-                <span class="tag">{{ action_labels.get(row.action, row.action) }}</span>
+                <span class="tag">
+                  {%- if row.platform == 'discord' -%}
+                    {{ discord_action_labels.get(row.action, row.action) }}
+                  {%- else -%}
+                    {{ action_labels.get(row.action, row.action) }}
+                  {%- endif -%}
+                </span>
+                {% if row.platform == 'discord' %}<span class="tag neutral">Discord</span>{% endif %}
                 {% if row.dry_run %}<span class="tag neutral">Probe</span>{% endif %}
               </td>
               <td class="text">
-                {% if row.target_author %}@{{ row.target_author }}
+                {% if row.target_author %}{{ '' if row.platform == 'discord' else '@' }}{{ row.target_author }}
                 {% elif row.target_id %}<span class="mono">{{ row.target_id }}</span>
                 {% else %}-{% endif %}
               </td>

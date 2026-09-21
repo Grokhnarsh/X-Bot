@@ -211,3 +211,116 @@ logging:
   file: "logs/xbot.log"
   max_bytes: 5242880     # 5 MB
   backup_count: 3
+
+# =============================================================================
+#  Discord (zweite Plattform)
+#
+#  Discord kennt keine Hashtags und keine oeffentliche Suche. Der Bot
+#  beobachtet deshalb feste Kanaele und reagiert auf Schluesselwoerter.
+#  Statt "liken" gibt es Reaktionen (Emoji); ein Gegenstueck zum Repost
+#  gibt es nicht.
+#
+#  Einrichtung:
+#    1. https://discord.com/developers/applications -> New Application
+#    2. Bot -> Token erzeugen -> als DISCORD_BOT_TOKEN in die .env
+#    3. Bot -> Privileged Gateway Intents -> MESSAGE CONTENT INTENT einschalten
+#       (ohne diesen Schalter liefert Discord leere Nachrichtentexte)
+#    4. OAuth2 -> URL Generator -> Scope "bot", Berechtigungen:
+#       View Channels, Read Message History, Send Messages, Add Reactions
+#    5. Mit der erzeugten URL den Bot auf den Server einladen
+#
+#  Kanal-IDs bekommt man mit eingeschaltetem Entwicklermodus
+#  (Einstellungen -> Erweitert -> Entwicklermodus) per Rechtsklick auf den
+#  Kanal -> "Kanal-ID kopieren".
+# =============================================================================
+discord:
+  # Standardmaessig aus. Erst einschalten, wenn Token und Kanaele stehen.
+  enabled: false
+
+  # Laenge der Discord-Texte. Discord erlaubt 2000 Zeichen; weniger ist
+  # freundlicher - eine Textwand im Kanal liest niemand.
+  max_chars: 600
+
+  # ---------------------------------------------------------------------------
+  # Eigene Beitraege in Kanaele
+  # ---------------------------------------------------------------------------
+  posting:
+    enabled: true
+    interval_minutes: 240
+    jitter_minutes: 60
+    active_hours: [8, 22]
+    active_weekdays: [0, 1, 2, 3, 4, 5, 6]
+    max_per_day: 5
+    # Zielkanaele fuer eigene Beitraege (reine Ziffern).
+    channels: []
+
+  # ---------------------------------------------------------------------------
+  # Auf Nachrichten reagieren
+  # ---------------------------------------------------------------------------
+  engagement:
+    enabled: true
+    interval_minutes: 10
+    jitter_minutes: 4
+
+    # Kanaele, die beobachtet werden.
+    watch_channels: []
+
+    # Nachrichten je Kanal und Durchlauf (1-100).
+    max_messages_per_channel: 50
+
+    # Nur Nachrichten aus den letzten N Minuten beruecksichtigen.
+    lookback_minutes: 120
+
+    # Hoechstens so viele Aktionen pro Durchlauf.
+    max_actions_per_cycle: 5
+
+    limits:
+      post_per_hour: 2
+      post_per_day: 5
+      react_per_hour: 20
+      react_per_day: 120
+      reply_per_hour: 3
+      reply_per_day: 12
+      min_seconds_between_actions: 20
+
+  # ---------------------------------------------------------------------------
+  # Regeln: worauf der Bot in Discord reagiert
+  # ---------------------------------------------------------------------------
+  rules:
+    - name: "Python-Hilfe"
+      keywords: ["traceback", "stacktrace", "importerror"]
+      match: any                  # any = ein Wort genuegt, all = alle noetig
+      actions: ["react"]          # moeglich: react, reply
+      emoji: "\U0001F440"         # Augenpaar
+      min_length: 40
+      weight: 1.0
+      # Nur in diesen Kanaelen. Leer = alle beobachteten Kanaele.
+      channels: []
+
+    - name: "Automatisierung"
+      keywords: ["automatisierung", "ci/cd", "deployment"]
+      match: any
+      actions: ["react"]
+      emoji: "⚙️"       # Zahnrad
+      min_length: 30
+      weight: 0.5
+      channels: []
+
+  # ---------------------------------------------------------------------------
+  # Sicherheitsfilter
+  # ---------------------------------------------------------------------------
+  filters:
+    # Bots untereinander koennen Endlosschleifen ausloesen.
+    skip_bots: true
+    skip_replies: false
+    skip_links: false
+    max_mentions: 3
+    min_message_length: 20
+    blocked_keywords:
+      - "nsfw"
+      - "gewinnspiel"
+      - "free nitro"
+      - "airdrop"
+    # Nutzer-IDs (reine Ziffern), nicht Anzeigenamen.
+    blocked_users: []
+    allowed_users: []

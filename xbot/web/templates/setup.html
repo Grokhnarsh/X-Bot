@@ -20,9 +20,17 @@
         {% else %}
           <span class="pill muted"><span class="dot"></span>Vorlagen</span>
         {% endif %}
+        {% if not status.discord.enabled %}
+          <span class="pill muted"><span class="dot"></span>Discord aus</span>
+        {% elif status.discord.token_ok %}
+          <span class="pill good"><span class="dot"></span>Discord verbunden</span>
+        {% else %}
+          <span class="pill critical"><span class="dot"></span>Discord-Token fehlt</span>
+        {% endif %}
       </div>
     </div>
-    <p class="hint">Prüft Konfiguration, Zugangsdaten und die Verbindung zu X.</p>
+    <p class="hint">Prüft Konfiguration, Zugangsdaten und die Verbindung zu X
+       {%- if status.discord.enabled %} und Discord{% endif %}.</p>
     <div class="btn-row">
       <button type="button" class="btn primary" data-run="doctor" data-label="Prüfung">Einrichtung prüfen</button>
       <button type="button" class="btn" data-run="reload" data-label="Neuladen">Konfiguration neu laden</button>
@@ -89,6 +97,29 @@
       <li>Erst <strong>danach</strong> unter <em>Keys and tokens</em> alle Werte erzeugen.</li>
       <li>Die Hashtag-Suche braucht mindestens die Zugriffsstufe <strong>Basic</strong>.
           Auf der Free-Stufe kann der Bot nur eigene Beiträge veröffentlichen.</li>
+    </ol>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Und der Discord-Token?</h2>
+    <p class="hint" style="margin-bottom:10px">Im
+      <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer">Discord Developer Portal</a>,
+      in dieser Reihenfolge:</p>
+    <ol style="margin:0;padding-left:20px;color:var(--ink-2);font-size:13.5px;line-height:1.9">
+      <li><strong>New Application</strong> anlegen, dann links auf <em>Bot</em>.</li>
+      <li><strong>Reset Token</strong> drücken und den Wert oben als
+          <span class="mono">DISCORD_BOT_TOKEN</span> eintragen. Er wird nur einmal angezeigt.</li>
+      <li>Auf derselben Seite <strong>MESSAGE CONTENT INTENT</strong> einschalten -
+          ohne dieses Recht liefert Discord nur leere Nachrichten, und der Bot kann
+          auf nichts reagieren.</li>
+      <li>Unter <em>OAuth2 &rarr; URL Generator</em> den Scope <strong>bot</strong> wählen und
+          die Rechte <em>View Channels</em>, <em>Read Message History</em>,
+          <em>Send Messages</em> und <em>Add Reactions</em> vergeben. Mit der erzeugten
+          Einladungs-URL den Bot auf den Server holen.</li>
+      <li>Kanal-IDs: in Discord unter <em>Einstellungen &rarr; Erweitert</em> den
+          <strong>Entwicklermodus</strong> einschalten, dann Rechtsklick auf einen Kanal
+          &rarr; <em>Kanal-ID kopieren</em>. Sie gehören in die
+          <a href="{{ url_for('pages.settings') }}">Einstellungen</a>.</li>
     </ol>
   </div>
 

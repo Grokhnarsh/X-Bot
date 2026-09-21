@@ -1,7 +1,7 @@
 """Limitierung der Schreibaktionen.
 
-X erkennt automatisiertes Verhalten vor allem am Muster: zu viel, zu schnell,
-zu gleichmaessig. Der Guard setzt deshalb drei Schranken durch:
+X wie Discord erkennen automatisiertes Verhalten vor allem am Muster: zu viel,
+zu schnell, zu gleichmaessig. Der Guard setzt deshalb drei Schranken durch:
 
 * ein gleitendes Stundenlimit,
 * ein Tageslimit ab lokaler Mitternacht,
@@ -9,6 +9,9 @@ zu gleichmaessig. Der Guard setzt deshalb drei Schranken durch:
 
 Ein Limit von ``0`` sperrt die Aktion vollstaendig - das ist der bequemste Weg,
 einzelne Aktionsarten abzuschalten.
+
+Jeder Guard gehoert zu genau einer Plattform. Zaehlwerk und Mindestabstand
+sind dadurch getrennt: Discord-Reaktionen bremsen keine Likes auf X aus.
 """
 
 from __future__ import annotations
@@ -17,10 +20,20 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from .config import Limits
-from .state import Store, utcnow
+from .config import DiscordLimits, Limits
+from .state import PLATFORM_DISCORD, PLATFORM_X, Store, utcnow
 
-ACTIONS = ("post", "like", "repost", "reply")
+#: Schreibaktionen je Plattform. Discord kennt kein Repost, dafuer Reaktionen.
+X_ACTIONS = ("post", "like", "repost", "reply")
+DISCORD_ACTIONS = ("post", "react", "reply")
+
+#: Vorgabe fuer Aufrufer, die keine Plattform angeben (X).
+ACTIONS = X_ACTIONS
+
+ACTIONS_BY_PLATFORM = {
+    PLATFORM_X: X_ACTIONS,
+    PLATFORM_DISCORD: DISCORD_ACTIONS,
+}
 
 
 @dataclass(frozen=True)
@@ -64,7 +77,15 @@ def local_midnight_utc(now: datetime, tz: ZoneInfo) -> datetime:
 
 
 class QuotaGuard:
-    def __init__(self, limits: Limits, store: Store, tz: ZoneInfo, *, dry_run: bool = False) -> None:
+    def __init__(
+        self,
+        limits: Limits | DiscordLimits,
+        store: Store,
+        tz: ZoneInfo,
+        *,
+        dry_run: bool = False,
+        platform: str = PLATFORM_X,
+    ) -> None:
         self.limits = limits
         self.store = store
         self.tz = tz
@@ -72,6 +93,9 @@ class QuotaGuard:
         # dieselben Grenzen erreicht wie der Echtbetrieb. Live werden
         # Probelaeufe ignoriert.
         self.include_dry_run = dry_run
+        self.platform = platform
+        #: Welche Aktionen diese Plattform ueberhaupt kennt.
+        self.actions = ACTIONS_BY_PLATFORM.get(platform, X_ACTIONS)
 
     # -- Abfragen -----------------------------------------------------------
     def usage(self, action: str, now: datetime | None = None) -> QuotaUsage:
@@ -79,27 +103,37 @@ class QuotaGuard:
         limit_hour = self.limits.per_hour(action)
         limit_day = self.limits.per_day(action)
         used_hour = self.store.count_actions(
-            action, now - timedelta(hours=1), include_dry_run=self.include_dry_run
+            action,
+            now - timedelta(hours=1),
+            platform=self.platform,
+            include_dry_run=self.include_dry_run,
         )
         used_day = self.store.count_actions(
-            action, local_midnight_utc(now, self.tz), include_dry_run=self.include_dry_run
+            action,
+            local_midnight_utc(now, self.tz),
+            platform=self.platform,
+            include_dry_run=self.include_dry_run,
         )
         return QuotaUsage(action, used_hour, limit_hour, used_day, limit_day)
 
     def snapshot(self, now: datetime | None = None) -> dict[str, QuotaUsage]:
         now = now or utcnow()
-        return {action: self.usage(action, now) for action in ACTIONS}
+        return {action: self.usage(action, now) for action in self.actions}
 
     def seconds_since_last_action(self, now: datetime | None = None) -> float | None:
         now = now or utcnow()
-        last = self.store.last_action_at(include_dry_run=self.include_dry_run)
+        # Der Mindestabstand gilt je Plattform: eine Discord-Reaktion darf
+        # einen Like auf X nicht ausbremsen.
+        last = self.store.last_action_at(
+            platform=self.platform, include_dry_run=self.include_dry_run
+        )
         if last is None:
             return None
         return max(0.0, (now - last).total_seconds())
 
     # -- Pruefung -----------------------------------------------------------
     def check(self, action: str, now: datetime | None = None) -> QuotaDecision:
-        if action not in ACTIONS:
+        if action not in self.actions:
             return QuotaDecision(False, f"unbekannte Aktion '{action}'")
 
         now = now or utcnow()
@@ -142,8 +176,12 @@ class QuotaGuard:
     def _seconds_until_hour_slot(self, action: str, now: datetime) -> int:
         """Wann faellt die aelteste Aktion aus dem Stundenfenster?"""
         window_start = now - timedelta(hours=1)
-        sql = "SELECT created_at FROM actions WHERE action = ? AND created_at >= ?"
-        params: list[object] = [action, window_start.strftime("%Y-%m-%dT%H:%M:%S.%fZ")]
+        sql = "SELECT created_at FROM actions WHERE platform = ? AND action = ? AND created_at >= ?"
+        params: list[object] = [
+            self.platform,
+            action,
+            window_start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        ]
         if not self.include_dry_run:
             sql += " AND dry_run = 0"
         sql += " ORDER BY created_at ASC LIMIT 1"

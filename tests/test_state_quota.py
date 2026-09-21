@@ -8,8 +8,17 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from xbot.config import Limits
-from xbot.quota import QuotaGuard, local_midnight_utc
-from xbot.state import Store, from_iso, to_iso, utcnow
+from xbot.quota import DISCORD_ACTIONS, QuotaGuard, X_ACTIONS, local_midnight_utc
+from xbot.state import (
+    PLATFORM_DISCORD,
+    PLATFORM_X,
+    SCHEMA_VERSION,
+    SCHEMA_VERSION_KEY,
+    Store,
+    from_iso,
+    to_iso,
+    utcnow,
+)
 
 BERLIN = ZoneInfo("Europe/Berlin")
 
@@ -59,7 +68,9 @@ class TestStore:
     def test_gesehen_aktualisiert_statt_zu_scheitern(self, store):
         store.mark_seen("1", author="a", decision="erst")
         store.mark_seen("1", decision="dann")
-        row = store.conn.execute("SELECT author, decision FROM seen_tweets WHERE tweet_id='1'").fetchone()
+        row = store.conn.execute(
+            "SELECT author, decision FROM seen_items WHERE platform = 'x' AND item_id = '1'"
+        ).fetchone()
         assert row["decision"] == "dann"
         assert row["author"] == "a"  # bleibt erhalten
 
@@ -169,3 +180,181 @@ class TestQuota:
     @pytest.mark.parametrize("aktion", ["post", "like", "repost", "reply"])
     def test_alle_aktionen_haben_limits(self, store, aktion):
         assert QuotaGuard(Limits(), store, BERLIN).usage(aktion).limit_day > 0
+
+
+# ---------------------------------------------------------------------------
+# Plattformtrennung und Migration
+# ---------------------------------------------------------------------------
+ALTES_SCHEMA = """
+CREATE TABLE actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, target_id TEXT,
+    target_author TEXT, rule_name TEXT, text TEXT,
+    dry_run INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+CREATE TABLE seen_tweets (
+    tweet_id TEXT PRIMARY KEY, author TEXT, rule_name TEXT, decision TEXT, first_seen TEXT NOT NULL);
+CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
+"""
+
+
+@pytest.fixture
+def alte_datenbank(tmp_path):
+    """Eine Datenbank im Schema der Fassung ohne Discord."""
+    import sqlite3
+
+    pfad = tmp_path / "alt.db"
+    conn = sqlite3.connect(pfad)
+    conn.executescript(ALTES_SCHEMA)
+    conn.execute(
+        "INSERT INTO actions (action, target_id, target_author, text, dry_run, created_at) "
+        "VALUES ('like', '111', 'alice', NULL, 0, '2026-09-20T10:00:00.000000Z')"
+    )
+    conn.execute(
+        "INSERT INTO actions (action, target_id, text, dry_run, created_at) "
+        "VALUES ('post', NULL, 'Ein alter Beitrag', 0, '2026-09-20T11:00:00.000000Z')"
+    )
+    conn.execute(
+        "INSERT INTO seen_tweets VALUES ('999', 'bob', 'Regel A', 'gefiltert', '2026-09-20T09:00:00.000000Z')"
+    )
+    conn.commit()
+    conn.close()
+    return pfad
+
+
+class TestMigration:
+    def test_altdaten_wandern_verlustfrei(self, alte_datenbank):
+        store = Store(alte_datenbank)
+        store.connect()
+        try:
+            # Altbestand bleibt erhalten und gilt als X.
+            assert store.has_acted("like", "111") is True
+            assert store.recent_texts() == ["Ein alter Beitrag"]
+            assert store.is_seen("999") is True
+            zeilen = store.conn.execute("SELECT platform FROM actions").fetchall()
+            assert {row["platform"] for row in zeilen} == {"x"}
+        finally:
+            store.close()
+
+    def test_alte_tabelle_verschwindet(self, alte_datenbank):
+        store = Store(alte_datenbank)
+        store.connect()
+        try:
+            namen = {
+                row["name"]
+                for row in store.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+            assert "seen_items" in namen
+            assert "seen_tweets" not in namen
+        finally:
+            store.close()
+
+    def test_schemaversion_wird_vermerkt(self, alte_datenbank):
+        store = Store(alte_datenbank)
+        store.connect()
+        try:
+            assert store.get_state(SCHEMA_VERSION_KEY) == str(SCHEMA_VERSION)
+        finally:
+            store.close()
+
+    def test_erneutes_oeffnen_ist_unschaedlich(self, alte_datenbank):
+        for _ in range(3):
+            store = Store(alte_datenbank)
+            store.connect()
+            anzahl = store.conn.execute("SELECT COUNT(*) AS n FROM seen_items").fetchone()["n"]
+            store.close()
+        assert anzahl == 1
+
+    def test_neue_datenbank_braucht_keine_migration(self, tmp_path):
+        store = Store(tmp_path / "neu.db")
+        store.connect()
+        try:
+            assert store.get_state(SCHEMA_VERSION_KEY) == str(SCHEMA_VERSION)
+            store.record_action("react", platform=PLATFORM_DISCORD, target_id="1")
+            assert store.has_acted("react", "1", platform=PLATFORM_DISCORD) is True
+        finally:
+            store.close()
+
+
+class TestPlattformtrennung:
+    def test_gleiche_id_auf_beiden_plattformen(self, store):
+        """X und Discord vergeben beide Schneeflocken - Kollision muss moeglich sein."""
+        store.record_action("reply", platform=PLATFORM_X, target_id="777")
+        assert store.has_acted("reply", "777", platform=PLATFORM_X) is True
+        assert store.has_acted("reply", "777", platform=PLATFORM_DISCORD) is False
+
+        store.record_action("reply", platform=PLATFORM_DISCORD, target_id="777")
+        assert store.has_acted("reply", "777", platform=PLATFORM_DISCORD) is True
+
+    def test_gesehene_beitraege_getrennt(self, store):
+        store.mark_seen("777", platform=PLATFORM_X, decision="gefiltert")
+        assert store.is_seen("777", platform=PLATFORM_X) is True
+        assert store.is_seen("777", platform=PLATFORM_DISCORD) is False
+        store.mark_seen("777", platform=PLATFORM_DISCORD, decision="bearbeitet")
+        zeilen = store.conn.execute("SELECT platform, decision FROM seen_items ORDER BY platform").fetchall()
+        assert [(r["platform"], r["decision"]) for r in zeilen] == [
+            ("discord", "bearbeitet"),
+            ("x", "gefiltert"),
+        ]
+
+    def test_zaehler_sind_getrennt(self, store):
+        jetzt = utcnow()
+        fenster = jetzt - timedelta(hours=1)
+        store.record_action("like", platform=PLATFORM_X, target_id="1")
+        for i in range(3):
+            store.record_action("react", platform=PLATFORM_DISCORD, target_id=f"d{i}")
+        assert store.count_actions("like", fenster, platform=PLATFORM_X) == 1
+        assert store.count_actions("react", fenster, platform=PLATFORM_DISCORD) == 3
+        assert store.count_actions("react", fenster, platform=PLATFORM_X) == 0
+
+    def test_textgedaechtnis_getrennt(self, store):
+        store.record_action("post", platform=PLATFORM_X, text="Nur auf X")
+        store.record_action("post", platform=PLATFORM_DISCORD, text="Nur in Discord")
+        assert store.recent_texts(platform=PLATFORM_X) == ["Nur auf X"]
+        assert store.recent_texts(platform=PLATFORM_DISCORD) == ["Nur in Discord"]
+
+    def test_stapelabfrage_respektiert_die_plattform(self, store):
+        for i in range(3):
+            store.record_action("like", platform=PLATFORM_X, target_id=str(i))
+            store.record_action("react", platform=PLATFORM_DISCORD, target_id=str(i))
+        assert store.acted_targets("like", ["0", "1", "2"], platform=PLATFORM_X) == {"0", "1", "2"}
+        assert store.acted_targets("like", ["0", "1", "2"], platform=PLATFORM_DISCORD) == set()
+
+    def test_auswertung_ueber_alle_plattformen(self, store):
+        store.record_action("like", platform=PLATFORM_X, target_id="1")
+        store.record_action("react", platform=PLATFORM_DISCORD, target_id="2")
+        assert set(store.summary()) == {"like", "react"}
+        assert set(store.summary(platform=PLATFORM_X)) == {"like"}
+
+    def test_protokoll_filtert_nach_plattform(self, store):
+        store.record_action("like", platform=PLATFORM_X, target_id="1")
+        store.record_action("react", platform=PLATFORM_DISCORD, target_id="2")
+        alle, gesamt = store.list_actions()
+        assert gesamt == 2
+        nur_discord, anzahl = store.list_actions(platform=PLATFORM_DISCORD)
+        assert anzahl == 1 and nur_discord[0]["action"] == "react"
+
+
+class TestQuotaProPlattform:
+    def test_aktionssatz_je_plattform(self, store):
+        x = QuotaGuard(Limits(), store, BERLIN, platform=PLATFORM_X)
+        d = QuotaGuard(Limits(), store, BERLIN, platform=PLATFORM_DISCORD)
+        assert x.actions == X_ACTIONS
+        assert d.actions == DISCORD_ACTIONS
+        assert "unbekannte Aktion" in d.check("repost").reason
+        assert "unbekannte Aktion" in x.check("react").reason
+
+    def test_limits_bremsen_nur_die_eigene_plattform(self, store):
+        limits = Limits(like_per_hour=1, min_seconds_between_actions=0)
+        x = QuotaGuard(limits, store, BERLIN, platform=PLATFORM_X)
+        d = QuotaGuard(limits, store, BERLIN, platform=PLATFORM_DISCORD)
+        store.record_action("like", platform=PLATFORM_X, target_id="1")
+        assert x.check("like").allowed is False
+        assert d.check("post").allowed is True
+
+    def test_mindestabstand_gilt_je_plattform(self, store):
+        limits = Limits(min_seconds_between_actions=60)
+        jetzt = utcnow()
+        store.record_action("like", platform=PLATFORM_X, target_id="1", created_at=jetzt)
+        x = QuotaGuard(limits, store, BERLIN, platform=PLATFORM_X)
+        d = QuotaGuard(limits, store, BERLIN, platform=PLATFORM_DISCORD)
+        assert "Mindestabstand" in x.check("post", jetzt).reason
+        assert d.check("post", jetzt).allowed is True

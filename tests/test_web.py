@@ -143,7 +143,7 @@ class TestSeiten:
         "path, marker",
         [
             ("/", "Steuerung"),
-            ("/rules", "Hashtag-Regeln"),
+            ("/rules", "Hashtags"),
             ("/settings", "Sicherheitsfilter"),
             ("/content", "Vorlagendatei"),
             ("/activity", "Aktivität"),
@@ -515,3 +515,150 @@ class TestHelfer:
         # Europe/Berlin liegt im Juni zwei Stunden vor UTC.
         assert format_local(moment, config, "%H:%M") == "12:30"
         assert format_local(None, config) == "-"
+
+
+# ---------------------------------------------------------------------------
+class TestDiscordInDerOberflaeche:
+    """Die Discord-Erweiterung muss sich genauso webbasiert bedienen lassen."""
+
+    @pytest.fixture
+    def discord_client(self, client, workdir, monkeypatch):
+        """Angemeldeter Client mit eingeschaltetem Discord-Teil."""
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token")
+        antwort = client.post(
+            "/settings/save",
+            data={
+                "_csrf": csrf(client, "/settings"),
+                "bool:discord.enabled": "1",
+                "csv:discord.posting.channels": "111000000000000000",
+                "csv:discord.engagement.watch_channels": "555000000000000000",
+            },
+        )
+        assert antwort.status_code == 302
+        assert load_config(workdir / "config.yaml").discord.enabled
+
+        # Der Arbeits-Thread baut den Bot erst beim naechsten Auftrag neu auf.
+        # Die Warteschlange ist FIFO: ist dieses Neuladen durch, ist auch das
+        # vom Speichern ausgeloeste erledigt und der Zeitplan steht.
+        auftrag = client.post("/api/run/reload", headers={"X-CSRF-Token": csrf(client)})
+        wait_for_task(client, auftrag.get_json()["task"]["id"])
+        return client
+
+    def test_discord_bleibt_ohne_zutun_aus(self, client, workdir):
+        """Wer nichts einstellt, bekommt keine zweite Plattform untergeschoben."""
+        assert load_config(workdir / "config.yaml").discord.enabled is False
+        seite = client.get("/").get_data(as_text=True)
+        assert 'data-run="discord_engage"' not in seite
+
+    def test_schaltflaechen_erscheinen_erst_nach_dem_einschalten(self, discord_client):
+        seite = discord_client.get("/").get_data(as_text=True)
+        assert 'data-run="discord_post"' in seite
+        assert 'data-run="discord_engage"' in seite
+        assert "Discord heute" in seite
+
+    def test_regelseite_zeigt_beide_plattformen(self, discord_client):
+        seite = discord_client.get("/rules").get_data(as_text=True)
+        assert "Hashtags" in seite and "Schlüsselwörter" in seite
+
+    def test_regel_anlegen_bearbeiten_loeschen(self, discord_client, workdir):
+        pfad = workdir / "config.yaml"
+        vorher = len(load_config(pfad).discord.rules)
+
+        angelegt = discord_client.post(
+            "/rules/discord/save",
+            data={
+                "_csrf": csrf(discord_client, "/rules"),
+                "index": "",
+                "str:rule.name": "Aus dem Web",
+                "csv:rule.keywords": "webtest, zweitwort",
+                "strlist:rule.actions": "react",
+                "str:rule.emoji": "\U0001F440",
+                "str:rule.match": "any",
+            },
+        )
+        assert angelegt.status_code == 302
+        regeln = load_config(pfad).discord.rules
+        assert len(regeln) == vorher + 1
+        neue = regeln[-1]
+        assert neue.name == "Aus dem Web" and neue.keywords == ("webtest", "zweitwort")
+
+        geaendert = discord_client.post(
+            "/rules/discord/save",
+            data={
+                "_csrf": csrf(discord_client, "/rules"),
+                "index": str(vorher),
+                "str:rule.name": "Umbenannt",
+                "csv:rule.keywords": "webtest",
+                "strlist:rule.actions": "react",
+                "str:rule.emoji": "✅",
+                "str:rule.match": "all",
+            },
+        )
+        assert geaendert.status_code == 302
+        assert load_config(pfad).discord.rules[vorher].name == "Umbenannt"
+
+        geloescht = discord_client.post(
+            "/rules/discord/delete",
+            data={"_csrf": csrf(discord_client, "/rules"), "index": str(vorher)},
+        )
+        assert geloescht.status_code == 302
+        assert len(load_config(pfad).discord.rules) == vorher
+
+    def test_regel_ohne_schluesselwort_wird_abgelehnt(self, discord_client, workdir):
+        vorher = len(load_config(workdir / "config.yaml").discord.rules)
+        antwort = discord_client.post(
+            "/rules/discord/save",
+            data={
+                "_csrf": csrf(discord_client, "/rules"),
+                "index": "",
+                "str:rule.name": "Ohne Wort",
+                "csv:rule.keywords": "",
+                "strlist:rule.actions": "react",
+            },
+            follow_redirects=True,
+        )
+        assert "Schlüsselwort" in antwort.get_data(as_text=True)
+        assert len(load_config(workdir / "config.yaml").discord.rules) == vorher
+
+    def test_x_regeln_bleiben_von_discord_unberuehrt(self, discord_client, workdir):
+        vorher = len(load_config(workdir / "config.yaml").rules)
+        discord_client.post(
+            "/rules/discord/save",
+            data={
+                "_csrf": csrf(discord_client, "/rules"),
+                "index": "",
+                "str:rule.name": "Nur Discord",
+                "csv:rule.keywords": "abgrenzung",
+                "strlist:rule.actions": "react",
+                "str:rule.emoji": "\U0001F440",
+            },
+        )
+        assert len(load_config(workdir / "config.yaml").rules) == vorher
+
+    def test_zaehler_werden_getrennt_ausgewiesen(self, discord_client):
+        daten = discord_client.get("/api/status").get_json()
+        assert daten["discord"]["enabled"] is True
+        assert set(daten["snapshot"]["discord"]["today"]) == {"post", "react", "reply"}
+        assert set(daten["snapshot"]["today"]) == {"post", "like", "repost", "reply"}
+
+    def test_zeitplan_bekommt_die_discord_laeufe(self, discord_client):
+        namen = [job["name"] for job in discord_client.get("/api/status").get_json()["jobs"]]
+        assert any("Discord" in name for name in namen)
+
+    def test_durchlauf_laesst_sich_ausloesen(self, discord_client):
+        """Ohne echten Token endet er im Fehler - aber verstaendlich."""
+        antwort = discord_client.post(
+            "/api/run/discord_engage", headers={"X-CSRF-Token": csrf(discord_client)}
+        )
+        assert antwort.status_code == 200
+        zustand = wait_for_task(discord_client, antwort.get_json()["task"]["id"])
+        assert zustand["done"]
+
+    def test_aktivitaet_laesst_sich_nach_plattform_filtern(self, discord_client):
+        seite = discord_client.get("/activity?platform=discord").get_data(as_text=True)
+        assert "Reaktion" in seite
+        assert discord_client.get("/activity?platform=quatsch").status_code == 200
+
+    def test_einrichtung_erklaert_den_token(self, discord_client):
+        seite = discord_client.get("/setup").get_data(as_text=True)
+        assert "DISCORD_BOT_TOKEN" in seite and "MESSAGE CONTENT INTENT" in seite

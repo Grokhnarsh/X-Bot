@@ -98,3 +98,141 @@ def test_zugangsdaten_erkennen_fehlende_felder():
     voll = Credentials(api_key="a", api_secret="b", access_token="c", access_token_secret="d")
     assert voll.has_write_access is True
     assert voll.has_search_access is True
+
+
+# ---------------------------------------------------------------------------
+# Discord
+# ---------------------------------------------------------------------------
+class TestDiscordKonfiguration:
+    def test_beispielkonfiguration_enthaelt_discord(self, config):
+        assert config.discord.enabled is False          # aus im Auslieferungszustand
+        assert len(config.discord.rules) == 2
+        assert "traceback" in config.discord.watched_keywords
+
+    def test_fehlt_der_abschnitt_bleibt_discord_aus(self):
+        """Bestandsnutzer ohne discord-Abschnitt sollen nichts merken."""
+        cfg = Config.parse({"engagement": {"enabled": False}}, credentials=Credentials())
+        assert cfg.discord.enabled is False
+        assert cfg.discord.rules == ()
+        assert cfg.discord.posting.channels == ()
+
+    @pytest.mark.parametrize(
+        "rule, fragment",
+        [
+            ({"name": "x", "keywords": [], "actions": ["react"]}, "mindestens ein Schluesselwort"),
+            ({"name": "x", "keywords": ["a"], "actions": ["tanzen"]}, "unbekannt"),
+            ({"name": "x", "keywords": ["a"], "actions": ["react"], "match": "irgendwie"}, "match"),
+            ({"name": "x", "keywords": ["a"], "actions": ["react"], "channels": ["allgemein"]}, "keine Kanal-ID"),
+        ],
+    )
+    def test_fehlerhafte_regeln(self, raw_config, rule, fragment):
+        merged = {**raw_config, "discord": {**raw_config["discord"], "rules": [rule]}}
+        with pytest.raises(ConfigError) as exc:
+            Config.parse(merged, credentials=Credentials())
+        assert fragment in str(exc.value)
+
+    def test_kanalnamen_statt_id_wird_erkannt(self, raw_config):
+        """Der haeufigste Einrichtungsfehler: Name statt ID eingetragen."""
+        merged = {
+            **raw_config,
+            "discord": {
+                **raw_config["discord"],
+                "engagement": {**raw_config["discord"]["engagement"], "watch_channels": ["#allgemein"]},
+            },
+        }
+        with pytest.raises(ConfigError, match="keine Kanal-ID"):
+            Config.parse(merged, credentials=Credentials())
+
+    def test_eingeschaltet_ohne_kanal_wird_abgelehnt(self, raw_config):
+        merged = {
+            **raw_config,
+            "discord": {
+                **raw_config["discord"],
+                "enabled": True,
+                "posting": {**raw_config["discord"]["posting"], "enabled": False},
+                "engagement": {**raw_config["discord"]["engagement"], "watch_channels": []},
+            },
+        }
+        with pytest.raises(ConfigError, match="kein Kanal"):
+            Config.parse(merged, credentials=Credentials())
+
+    def test_eingeschaltet_ohne_zielkanal_wird_abgelehnt(self, raw_config):
+        merged = {
+            **raw_config,
+            "discord": {
+                **raw_config["discord"],
+                "enabled": True,
+                "posting": {**raw_config["discord"]["posting"], "enabled": True, "channels": []},
+                "engagement": {**raw_config["discord"]["engagement"], "enabled": False},
+            },
+        }
+        with pytest.raises(ConfigError, match="kein Zielkanal"):
+            Config.parse(merged, credentials=Credentials())
+
+    def test_vollstaendige_konfiguration_laedt(self, raw_config):
+        merged = {
+            **raw_config,
+            "discord": {
+                **raw_config["discord"],
+                "enabled": True,
+                "posting": {**raw_config["discord"]["posting"], "channels": ["123456789012345678"]},
+                "engagement": {
+                    **raw_config["discord"]["engagement"],
+                    "watch_channels": ["234567890123456789"],
+                },
+            },
+        }
+        cfg = Config.parse(merged, credentials=Credentials())
+        assert cfg.discord.enabled is True
+        assert cfg.discord.posting.channels == ("123456789012345678",)
+        assert cfg.discord.all_watch_channels == ("234567890123456789",)
+
+    def test_regel_kanaele_zaehlen_zu_den_beobachteten(self, raw_config):
+        merged = {
+            **raw_config,
+            "discord": {
+                **raw_config["discord"],
+                "rules": [
+                    {
+                        "name": "Nur ein Kanal",
+                        "keywords": ["hilfe"],
+                        "actions": ["react"],
+                        "channels": ["345678901234567890"],
+                    }
+                ],
+            },
+        }
+        cfg = Config.parse(merged, credentials=Credentials())
+        assert "345678901234567890" in cfg.discord.all_watch_channels
+
+    def test_regeltreffer(self):
+        from xbot.config import DiscordRule
+
+        regel = DiscordRule(name="r", keywords=("traceback", "fehler"), actions=("react",), match="any")
+        assert regel.matches("Hier ist mein Traceback") is True
+        assert regel.matches("alles gut") is False
+
+        alle = DiscordRule(name="r", keywords=("a", "b"), actions=("react",), match="all")
+        assert alle.matches("nur a") is False
+        assert alle.matches("a und b") is True
+
+    def test_regel_beschraenkt_auf_kanal(self):
+        from xbot.config import DiscordRule
+
+        regel = DiscordRule(name="r", keywords=("hilfe",), actions=("react",), channels=("111",))
+        assert regel.matches("hilfe", channel_id="111") is True
+        assert regel.matches("hilfe", channel_id="222") is False
+
+    def test_discord_limits_zugriff(self):
+        from xbot.config import DiscordLimits
+
+        limits = DiscordLimits(react_per_day=99)
+        assert limits.per_day("react") == 99
+        assert limits.per_hour("reply") == 3
+
+    def test_zugangsdaten_kennen_den_token(self):
+        leer = Credentials()
+        assert leer.has_discord is False
+        mit = Credentials(discord_bot_token="abc")
+        assert mit.has_discord is True
+        assert "abc" not in repr(mit)
