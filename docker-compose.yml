@@ -1,0 +1,19 @@
+services:
+  xbot:
+    build: .
+    image: x-bot:latest
+    container_name: x-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Not-Aus: auf "false" stellen, wenn der Bot wirklich senden soll.
+      XBOT_DRY_RUN: "true"
+    volumes:
+      # Konfiguration und Vorlagen schreibgeschuetzt hineinreichen.
+      - ./config.yaml:/app/config.yaml:ro
+      - ./content:/app/content:ro
+      # Datenbank und Protokolle bleiben auf dem Host erhalten.
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: ["run"]
