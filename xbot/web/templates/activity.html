@@ -33,7 +33,8 @@
   </form>
 
   {% if entries %}
-    <table>
+    <div class="table-scroll">
+      <table>
       <thead>
         <tr><th>Wann</th><th>Aktion</th><th>Ziel</th><th>Regel</th><th>Text</th></tr>
       </thead>
@@ -70,6 +71,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
     {% if pages > 1 %}
       <div class="pager">

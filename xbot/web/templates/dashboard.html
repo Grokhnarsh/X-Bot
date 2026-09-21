@@ -88,42 +88,88 @@
     <div class="result" id="task-result" hidden></div>
   </div>
 
-  {# -------------------------------------------------------- Zahlen heute #}
-  <div class="grid cols-2" style="margin-top:16px;align-items:start">
-    <div class="card">
-      <h2>Heute</h2>
-      <p class="hint">Seit Mitternacht {{ config.bot.timezone }}{% if config.bot.dry_run %}, Probelauf mitgezählt{% endif %}.</p>
-      <div class="hero-label">Aktionen insgesamt</div>
-      <div class="hero" id="stat-total">{{ snapshot.today_total }}</div>
+  {# ------------------------------------------------- Zahlen heute je Plattform #}
+  {# Zwei Stapel statt eines Rasters: sonst waeren beide Karten einer Zeile
+     so hoch wie die hoehere, und unter der kuerzeren klaffte eine Luecke. #}
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="stack">
+      <div class="card">
+        <h2>Heute</h2>
+        <p class="hint">Seit Mitternacht {{ config.bot.timezone }}{% if config.bot.dry_run %}, Probelauf mitgezählt{% endif %}.</p>
+        <div class="hero-label">Aktionen insgesamt</div>
+        <div class="hero" id="stat-total">{{ snapshot.today_total }}</div>
 
-      <div class="grid cols-4" style="margin-top:18px;gap:10px">
+        <div class="grid cols-4" style="margin-top:18px;gap:10px">
+          {% for action in actions %}
+            <div class="tile">
+              <div class="label">{{ action_labels[action] }}</div>
+              <div class="value" id="stat-{{ action }}">{{ snapshot.today[action] }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if status.discord.enabled %}
+        <div class="card">
+          <h2>Discord heute</h2>
+          <p class="hint">Getrennt von X gezählt - eine Reaktion dort ist kein Like hier.</p>
+          <div class="hero-label">Aktionen insgesamt</div>
+          <div class="hero" id="stat-discord-total">{{ snapshot.discord.today_total }}</div>
+
+          <div class="grid cols-4" style="margin-top:18px;gap:10px">
+            {% for action in discord_actions %}
+              <div class="tile">
+                <div class="label">{{ discord_action_labels[action] }}</div>
+                <div class="value" id="stat-discord-{{ action }}">{{ snapshot.discord.today[action] }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <h2>Auslastung der Tageslimits</h2>
+        <p class="hint">Der Bot handelt erst wieder, wenn ein Limit zurückgesetzt ist.</p>
         {% for action in actions %}
-          <div class="tile">
-            <div class="label">{{ action_labels[action] }}</div>
-            <div class="value" id="stat-{{ action }}">{{ snapshot.today[action] }}</div>
+          {% set usage = snapshot.quota[action] %}
+          {% set share = usage.share_day %}
+          <div class="meter-row">
+            <span class="meter-name">{{ action_labels[action] }}</span>
+            <span class="meter">
+              <span class="meter-fill{% if share >= 0.9 %} critical{% elif share >= 0.7 %} warn{% endif %}"
+                    id="meter-{{ action }}" style="width: {{ (share * 100)|round(1) }}%"></span>
+            </span>
+            <span class="meter-value" id="meterval-{{ action }}">{{ usage.used_day }} / {{ usage.limit_day }}</span>
           </div>
         {% endfor %}
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Auslastung der Tageslimits</h2>
-      <p class="hint">Der Bot handelt erst wieder, wenn ein Limit zurückgesetzt ist.</p>
-      {% for action in actions %}
-        {% set usage = snapshot.quota[action] %}
-        {% set share = usage.share_day %}
-        <div class="meter-row">
-          <span class="meter-name">{{ action_labels[action] }}</span>
-          <span class="meter">
-            <span class="meter-fill{% if share >= 0.9 %} critical{% elif share >= 0.7 %} warn{% endif %}"
-                  id="meter-{{ action }}" style="width: {{ (share * 100)|round(1) }}%"></span>
-          </span>
-          <span class="meter-value" id="meterval-{{ action }}">{{ usage.used_day }} / {{ usage.limit_day }}</span>
+      {% if status.discord.enabled %}
+        <div class="card">
+          <h2>Discord-Tageslimits</h2>
+          <p class="hint">
+            {{ status.discord.watch_channels }} beobachtete(r) Kanal/Kanäle,
+            {{ status.discord.post_channels }} zum Posten.
+          </p>
+          {% for action in discord_actions %}
+            {% set usage = snapshot.discord.quota[action] %}
+            {% set share = usage.share_day %}
+            <div class="meter-row">
+              <span class="meter-name">{{ discord_action_labels[action] }}</span>
+              <span class="meter">
+                <span class="meter-fill{% if share >= 0.9 %} critical{% elif share >= 0.7 %} warn{% endif %}"
+                      id="meter-discord-{{ action }}" style="width: {{ (share * 100)|round(1) }}%"></span>
+              </span>
+              <span class="meter-value" id="meterval-discord-{{ action }}">{{ usage.used_day }} / {{ usage.limit_day }}</span>
+            </div>
+          {% endfor %}
         </div>
-      {% endfor %}
+      {% endif %}
 
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--grid)">
-        <h2 style="margin-bottom:8px">Zeitplan</h2>
+      <div class="card">
+        <h2>Zeitplan</h2>
         {% for job in status.jobs %}
           <div class="meter-row" style="grid-template-columns:1fr auto">
             <span class="meter-name">
@@ -142,46 +188,6 @@
       </div>
     </div>
   </div>
-
-  {% if status.discord.enabled %}
-    <div class="grid cols-2" style="margin-top:16px;align-items:start">
-      <div class="card">
-        <h2>Discord heute</h2>
-        <p class="hint">Getrennt von X gezählt - eine Reaktion dort ist kein Like hier.</p>
-        <div class="hero-label">Aktionen insgesamt</div>
-        <div class="hero" id="stat-discord-total">{{ snapshot.discord.today_total }}</div>
-
-        <div class="grid cols-4" style="margin-top:18px;gap:10px">
-          {% for action in discord_actions %}
-            <div class="tile">
-              <div class="label">{{ discord_action_labels[action] }}</div>
-              <div class="value" id="stat-discord-{{ action }}">{{ snapshot.discord.today[action] }}</div>
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Discord-Tageslimits</h2>
-        <p class="hint">
-          {{ status.discord.watch_channels }} beobachtete(r) Kanal/Kanäle,
-          {{ status.discord.post_channels }} zum Posten.
-        </p>
-        {% for action in discord_actions %}
-          {% set usage = snapshot.discord.quota[action] %}
-          {% set share = usage.share_day %}
-          <div class="meter-row">
-            <span class="meter-name">{{ discord_action_labels[action] }}</span>
-            <span class="meter">
-              <span class="meter-fill{% if share >= 0.9 %} critical{% elif share >= 0.7 %} warn{% endif %}"
-                    id="meter-discord-{{ action }}" style="width: {{ (share * 100)|round(1) }}%"></span>
-            </span>
-            <span class="meter-value" id="meterval-discord-{{ action }}">{{ usage.used_day }} / {{ usage.limit_day }}</span>
-          </div>
-        {% endfor %}
-      </div>
-    </div>
-  {% endif %}
 
   {# ----------------------------------------------------------- Verlauf #}
   <div class="card" style="margin-top:16px">
@@ -215,6 +221,7 @@
       <a class="tab" href="{{ url_for('pages.activity') }}">Alles ansehen</a>
     </div>
     {% if snapshot.recent %}
+      <div class="table-scroll">
       <table>
         <thead>
           <tr><th>Wann</th><th>Aktion</th><th>Ziel</th><th>Regel</th><th>Text</th></tr>
@@ -245,6 +252,7 @@
           {% endfor %}
         </tbody>
       </table>
+    </div>
     {% else %}
       <div class="empty">Noch nichts passiert. Mit &bdquo;Jetzt reagieren&ldquo; einen Probelauf starten.</div>
     {% endif %}

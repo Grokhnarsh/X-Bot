@@ -183,6 +183,11 @@ a { color: var(--accent); }
 
 .grid { display: grid; gap: var(--gap); }
 .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Eine Spalte mit mehreren Karten untereinander. In einem Raster waeren
+   alle Karten einer Zeile so hoch wie die hoechste - darunter klaffte
+   eine Luecke. Als eigener Stapel bekommt jede Karte ihre eigene Hoehe. */
+.stack { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 /* ------------------------------------------------------- Zahlen & Kacheln */
@@ -294,6 +299,10 @@ fieldset legend {
 }
 
 /* --------------------------------------------------------------- Tabellen */
+/* Fuenf Spalten passen auf einem Telefon nicht nebeneinander. Statt die
+   ganze Seite waagerecht zu schieben, rollt nur die Tabelle. */
+.table-scroll { overflow-x: auto; margin: 0 -2px; padding: 0 2px; }
+
 table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th {
   text-align: left; font-size: 11.5px; font-weight: 650;
